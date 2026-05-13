@@ -4,7 +4,7 @@
 
     <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
     <artifactId>maven-assembly-cyclonedx</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.2-SNAPSHOT</version>
 
     <name>Maven Assembly CycloneDX Generator</name>
     <description>CycloneDX BOM generator that can be added to the maven-assembly-plugin configuration</description>
@@ -19,7 +19,7 @@
         <connection>scm:git:git://github.com/aloubyansky/maven-assembly-sbom.git</connection>
         <developerConnection>scm:git:ssh://github.com/aloubyansky/maven-assembly-sbom.git</developerConnection>
         <url>https://github.com/aloubyansky/maven-assembly-sbom</url>
-      <tag>0.0.1</tag>
+      <tag>HEAD</tag>
   </scm>
     <developers>
         <developer>
