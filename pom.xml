@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
     <artifactId>maven-assembly-cyclonedx</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.1</version>
 
     <name>Maven Assembly CycloneDX Generator</name>
     <description>CycloneDX BOM generator that can be added to the maven-assembly-plugin configuration</description>
@@ -21,7 +19,7 @@
         <connection>scm:git:git://github.com/aloubyansky/maven-assembly-sbom.git</connection>
         <developerConnection>scm:git:ssh://github.com/aloubyansky/maven-assembly-sbom.git</developerConnection>
         <url>https://github.com/aloubyansky/maven-assembly-sbom</url>
-      <tag>HEAD</tag>
+      <tag>0.0.1</tag>
   </scm>
     <developers>
         <developer>
