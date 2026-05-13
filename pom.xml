@@ -8,6 +8,7 @@
     <artifactId>maven-assembly-cyclonedx</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 
+    <name>Maven Assembly CycloneDX Generator</name>
     <description>CycloneDX BOM generator that can be added to the maven-assembly-plugin configuration</description>
     <url>https://github.com/aloubyansky/maven-assembly-sbom</url>
     <licenses>
