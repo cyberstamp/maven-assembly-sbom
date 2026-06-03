@@ -209,6 +209,26 @@ class EffectiveModelResolverTest {
         verify(modelBuilder, times(2)).build(any());
     }
 
+    @Test
+    void resolveEffectiveModel_findsWarReactorModuleByGav() throws Exception {
+        Model warModel = createModelWithLicense("Apache-2.0");
+
+        org.apache.maven.project.MavenProject warProject = mock(org.apache.maven.project.MavenProject.class,
+                withSettings().lenient());
+        when(warProject.getGroupId()).thenReturn(GROUP_ID);
+        when(warProject.getArtifactId()).thenReturn(ARTIFACT_ID);
+        when(warProject.getVersion()).thenReturn(VERSION);
+        when(warProject.getPackaging()).thenReturn("war");
+        when(warProject.getModel()).thenReturn(warModel);
+
+        resolver.init(repoSession, List.of(), List.of(warProject));
+
+        Model result = resolver.resolveEffectiveModel(GROUP_ID, ARTIFACT_ID, VERSION);
+
+        assertSame(warModel, result);
+        verifyNoInteractions(repoSystem);
+    }
+
     // --- helpers ---
 
     /**
