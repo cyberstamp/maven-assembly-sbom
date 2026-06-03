@@ -614,7 +614,9 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
             }
             field.setAccessible(true);
             List<java.io.Closeable> closeables = (List<java.io.Closeable>) field.get(archiver);
-            closeables.add(() -> updateBomWithArchiveHash(archiver, bom, bomPath));
+            MessageDigest digest = messageDigest;
+            Hash.Algorithm algorithm = bomHashAlgorithm;
+            closeables.add(() -> updateBomWithArchiveHash(archiver, bom, bomPath, digest, algorithm));
         } catch (Exception e) {
             log.debug("Could not register archive hash callback", e);
         }
@@ -637,15 +639,16 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     /**
      * Computes the archive's content hash and rewrites the BOM with it.
      */
-    private void updateBomWithArchiveHash(Archiver archiver, Bom bom, Path bomPath) {
+    private void updateBomWithArchiveHash(Archiver archiver, Bom bom, Path bomPath,
+            MessageDigest digest, Hash.Algorithm algorithm) {
         try {
             File archiveFile = archiver.getDestFile();
             if (archiveFile == null || !archiveFile.isFile()) {
                 return;
             }
-            String archiveHash = SbomUtils.computeHash(messageDigest, archiveFile.toPath());
+            String archiveHash = SbomUtils.computeHash(digest, archiveFile.toPath());
             bom.getMetadata().getComponent()
-                    .addHash(new Hash(bomHashAlgorithm, archiveHash));
+                    .addHash(new Hash(algorithm, archiveHash));
             writeBom(bom, bomPath);
             log.debug("Updated BOM with archive hash: {}", archiveHash);
         } catch (Exception e) {
