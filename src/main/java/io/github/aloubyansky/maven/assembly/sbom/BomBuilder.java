@@ -122,26 +122,11 @@ public class BomBuilder {
      */
     public void addMavenArtifact(ArtifactCoords coords, String archivePath,
             String hash, LicenseChoice licenses) {
-        Component existing = componentsById.get(coords);
-        if (existing != null) {
-            appendOccurrence(existing, archivePath);
-            applyLicensesIfAbsent(existing, licenses);
-            return;
+        Component comp = registerMavenComponent(coords, archivePath, hash, licenses);
+        if (comp != null) {
+            directChildren.add(comp.getBomRef());
+            components.add(comp);
         }
-
-        Component comp = createMavenComponent(coords);
-        if (hash != null) {
-            comp.addHash(new Hash(hashAlgorithm, hash));
-        }
-        comp.setEvidence(buildMavenEvidence(archivePath));
-        if (licenses != null) {
-            comp.setLicenseChoice(licenses);
-        }
-
-        bomRefById.put(coords, comp.getBomRef());
-        componentsById.put(coords, comp);
-        directChildren.add(comp.getBomRef());
-        components.add(comp);
     }
 
     /**
@@ -172,11 +157,25 @@ public class BomBuilder {
     public void addNestedMavenArtifact(ArtifactCoords parentId, ArtifactCoords coords,
             String archivePath, String hash,
             LicenseChoice licenses) {
+        Component comp = registerMavenComponent(coords, archivePath, hash, licenses);
+        if (comp != null) {
+            nestedComponentsByParent.computeIfAbsent(parentId, k -> new ArrayList<>())
+                    .add(comp);
+        }
+    }
+
+    /**
+     * Creates and registers a Maven component, or merges with an existing
+     * one if the coordinates are already known. Returns the new component,
+     * or {@code null} if a duplicate was merged.
+     */
+    private Component registerMavenComponent(ArtifactCoords coords, String archivePath,
+            String hash, LicenseChoice licenses) {
         Component existing = componentsById.get(coords);
         if (existing != null) {
             appendOccurrence(existing, archivePath);
             applyLicensesIfAbsent(existing, licenses);
-            return;
+            return null;
         }
 
         Component comp = createMavenComponent(coords);
@@ -190,8 +189,7 @@ public class BomBuilder {
 
         bomRefById.put(coords, comp.getBomRef());
         componentsById.put(coords, comp);
-        nestedComponentsByParent.computeIfAbsent(parentId, k -> new ArrayList<>())
-                .add(comp);
+        return comp;
     }
 
     /**
