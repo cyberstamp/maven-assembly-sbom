@@ -140,6 +140,30 @@ class BomBuilderTest {
     }
 
     @Test
+    void fileBomRefPreservesPath() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+        builder.addFile("conf/app.properties", "deadbeef");
+        Bom bom = builder.build();
+
+        Component comp = findByName(bom, "app.properties");
+        assertEquals("file:conf/app.properties", comp.getBomRef());
+    }
+
+    @Test
+    void fileBomRefDistinguishesSimilarPaths() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+        builder.addFile("lib/foo-bar", "aaa");
+        builder.addFile("lib-foo/bar", "bbb");
+        Bom bom = builder.build();
+
+        Set<String> refs = new HashSet<>();
+        for (Component c : bom.getComponents()) {
+            assertTrue(refs.add(c.getBomRef()),
+                    "duplicate bomRef: " + c.getBomRef());
+        }
+    }
+
+    @Test
     void dependencyGraphConnectsComponents() {
         BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
         builder.addMavenArtifact(

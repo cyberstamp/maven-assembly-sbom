@@ -432,7 +432,7 @@ public class BomBuilder {
         comp.setType(Component.Type.FILE);
         String fileName = extractFileName(archivePath);
         comp.setName(fileName);
-        comp.setBomRef("file-" + archivePath.replace("/", "-").replace("\\", "-"));
+        comp.setBomRef("file:" + archivePath);
         comp.setPurl(buildGenericPurl(fileName, hash));
         if (hash != null) {
             comp.addHash(new Hash(hashAlgorithm, hash));
