@@ -44,6 +44,15 @@ import org.cyclonedx.model.metadata.ToolInformation;
  */
 public class BomBuilder {
 
+    private static final Comparator<Component> COMPONENT_ORDER;
+    static {
+        Comparator<String> nullSafe = Comparator.nullsFirst(Comparator.naturalOrder());
+        COMPONENT_ORDER = Comparator
+                .comparing(Component::getGroup, nullSafe)
+                .thenComparing(Component::getName)
+                .thenComparing(Component::getVersion, nullSafe);
+    }
+
     private final String projectGroupId;
     private final String projectArtifactId;
     private final String projectVersion;
@@ -59,6 +68,7 @@ public class BomBuilder {
     private final Set<String> directChildren = new HashSet<>();
     private final Map<ArtifactCoords, Set<ArtifactCoords>> explicitDeps = new HashMap<>();
     private LicenseChoice projectLicenses;
+    private Properties toolProperties;
     private LicenseChoice toolLicenses;
     private String toolHash;
     private String archiveType;
@@ -122,26 +132,11 @@ public class BomBuilder {
      */
     public void addMavenArtifact(ArtifactCoords coords, String archivePath,
             String hash, LicenseChoice licenses) {
-        Component existing = componentsById.get(coords);
-        if (existing != null) {
-            appendOccurrence(existing, archivePath);
-            applyLicensesIfAbsent(existing, licenses);
-            return;
+        Component comp = registerMavenComponent(coords, archivePath, hash, licenses);
+        if (comp != null) {
+            directChildren.add(comp.getBomRef());
+            components.add(comp);
         }
-
-        Component comp = createMavenComponent(coords);
-        if (hash != null) {
-            comp.addHash(new Hash(hashAlgorithm, hash));
-        }
-        comp.setEvidence(buildMavenEvidence(archivePath));
-        if (licenses != null) {
-            comp.setLicenseChoice(licenses);
-        }
-
-        bomRefById.put(coords, comp.getBomRef());
-        componentsById.put(coords, comp);
-        directChildren.add(comp.getBomRef());
-        components.add(comp);
     }
 
     /**
@@ -172,11 +167,25 @@ public class BomBuilder {
     public void addNestedMavenArtifact(ArtifactCoords parentId, ArtifactCoords coords,
             String archivePath, String hash,
             LicenseChoice licenses) {
+        Component comp = registerMavenComponent(coords, archivePath, hash, licenses);
+        if (comp != null) {
+            nestedComponentsByParent.computeIfAbsent(parentId, k -> new ArrayList<>())
+                    .add(comp);
+        }
+    }
+
+    /**
+     * Creates and registers a Maven component, or merges with an existing
+     * one if the coordinates are already known. Returns the new component,
+     * or {@code null} if a duplicate was merged.
+     */
+    private Component registerMavenComponent(ArtifactCoords coords, String archivePath,
+            String hash, LicenseChoice licenses) {
         Component existing = componentsById.get(coords);
         if (existing != null) {
             appendOccurrence(existing, archivePath);
             applyLicensesIfAbsent(existing, licenses);
-            return;
+            return null;
         }
 
         Component comp = createMavenComponent(coords);
@@ -190,8 +199,7 @@ public class BomBuilder {
 
         bomRefById.put(coords, comp.getBomRef());
         componentsById.put(coords, comp);
-        nestedComponentsByParent.computeIfAbsent(parentId, k -> new ArrayList<>())
-                .add(comp);
+        return comp;
     }
 
     /**
@@ -217,6 +225,14 @@ public class BomBuilder {
      */
     public void setProjectLicenses(LicenseChoice licenses) {
         this.projectLicenses = licenses;
+    }
+
+    /**
+     * Sets the tool's Maven properties (groupId, artifactId, version)
+     * loaded from pom.properties on the classpath.
+     */
+    public void setToolProperties(Properties toolProperties) {
+        this.toolProperties = toolProperties;
     }
 
     /**
@@ -304,18 +320,13 @@ public class BomBuilder {
         if (nestedComponentsByParent.isEmpty()) {
             return;
         }
-        Comparator<String> nullSafe = Comparator.nullsFirst(Comparator.naturalOrder());
-        Comparator<Component> byCoordinates = Comparator
-                .comparing(Component::getGroup, nullSafe)
-                .thenComparing(Component::getName)
-                .thenComparing(Component::getVersion, nullSafe);
         for (Map.Entry<ArtifactCoords, List<Component>> entry : nestedComponentsByParent.entrySet()) {
             Component parent = componentsById.get(entry.getKey());
             if (parent == null) {
                 continue;
             }
             List<Component> nested = entry.getValue();
-            nested.sort(byCoordinates);
+            nested.sort(COMPONENT_ORDER);
             parent.setComponents(nested);
         }
     }
@@ -352,7 +363,7 @@ public class BomBuilder {
      * Creates the tool identity for the BOM metadata.
      */
     private ToolInformation createToolInfo() {
-        Properties props = SbomUtils.loadToolProperties();
+        Properties props = toolProperties != null ? toolProperties : SbomUtils.loadToolProperties();
         Component tool = new Component();
         tool.setType(Component.Type.APPLICATION);
         tool.setGroup(props.getProperty("groupId",
@@ -379,11 +390,7 @@ public class BomBuilder {
      */
     private List<Component> buildSortedComponentList() {
         List<Component> allComponents = new ArrayList<>(components);
-        Comparator<String> nullSafe = Comparator.nullsFirst(Comparator.naturalOrder());
-        allComponents.sort(Comparator
-                .comparing(Component::getGroup, nullSafe)
-                .thenComparing(Component::getName)
-                .thenComparing(Component::getVersion, nullSafe));
+        allComponents.sort(COMPONENT_ORDER);
         return allComponents;
     }
 
@@ -432,7 +439,7 @@ public class BomBuilder {
         comp.setType(Component.Type.FILE);
         String fileName = extractFileName(archivePath);
         comp.setName(fileName);
-        comp.setBomRef("file-" + archivePath.replace("/", "-").replace("\\", "-"));
+        comp.setBomRef("file:" + archivePath);
         comp.setPurl(buildGenericPurl(fileName, hash));
         if (hash != null) {
             comp.addHash(new Hash(hashAlgorithm, hash));
@@ -642,14 +649,14 @@ public class BomBuilder {
      * a bare {@code pkg:maven/g/a@v} without type or classifier.
      */
     private String buildMainPurl() {
-        String base = "pkg:maven/" + projectGroupId + "/" + projectArtifactId
-                + "@" + projectVersion;
+        String base = "pkg:maven/" + purlEncode(projectGroupId) + "/"
+                + purlEncode(projectArtifactId) + "@" + purlEncode(projectVersion);
         if (archiveType == null) {
             return base;
         }
-        String purl = base + "?type=" + archiveType;
+        String purl = base + "?type=" + purlEncode(archiveType);
         if (classifier != null && !classifier.isEmpty()) {
-            purl += "&classifier=" + classifier;
+            purl += "&classifier=" + purlEncode(classifier);
         }
         return purl;
     }
@@ -659,10 +666,11 @@ public class BomBuilder {
      */
     private static String buildMavenPurl(String groupId, String artifactId,
             String version, String type, String classifier) {
-        String purl = "pkg:maven/" + groupId + "/" + artifactId + "@" + version
-                + "?type=" + (type != null ? type : "jar");
+        String purl = "pkg:maven/" + purlEncode(groupId) + "/" + purlEncode(artifactId)
+                + "@" + purlEncode(version)
+                + "?type=" + purlEncode(type != null ? type : "jar");
         if (classifier != null && !classifier.isEmpty()) {
-            purl += "&classifier=" + classifier;
+            purl += "&classifier=" + purlEncode(classifier);
         }
         return purl;
     }
@@ -671,11 +679,52 @@ public class BomBuilder {
      * Builds a Package URL for a generic (non-Maven) file.
      */
     private String buildGenericPurl(String fileName, String hash) {
-        String purl = "pkg:generic/" + fileName;
+        String purl = "pkg:generic/" + purlEncode(fileName);
         if (hash != null) {
-            purl += "?checksum=" + hashAlgorithmName + ":" + hash;
+            purl += "?checksum=" + purlEncode(hashAlgorithmName) + ":" + purlEncode(hash);
         }
         return purl;
+    }
+
+    private static final char[] HEX_DIGITS = "0123456789ABCDEF".toCharArray();
+
+    /**
+     * Percent-encodes a PURL component per RFC 3986. Only unreserved
+     * characters (A-Z a-z 0-9 - . _ ~) are left unencoded.
+     */
+    private static String purlEncode(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        int i = 0;
+        while (i < value.length()) {
+            char c = value.charAt(i);
+            if (!isUnreserved(c)) {
+                break;
+            }
+            i++;
+        }
+        if (i == value.length()) {
+            return value;
+        }
+        StringBuilder sb = new StringBuilder(value.length() + 2);
+        sb.append(value, 0, i);
+        for (byte b : value.substring(i).getBytes(StandardCharsets.UTF_8)) {
+            if (isUnreserved(b)) {
+                sb.append((char) b);
+            } else {
+                int unsigned = b & 0xFF;
+                sb.append('%');
+                sb.append(HEX_DIGITS[unsigned >> 4]);
+                sb.append(HEX_DIGITS[unsigned & 0x0F]);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static boolean isUnreserved(int c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~';
     }
 
     /**

@@ -395,28 +395,36 @@ class ArchiveAnalyzer {
     }
 
     /**
-     * Reads pom.properties from a nested JAR entry.
+     * Reads pom.properties from a nested JAR entry. Returns the
+     * properties only if exactly one pom.properties is found;
+     * shaded JARs may contain multiple from bundled dependencies,
+     * in which case {@code null} is returned to avoid misidentification.
      */
     private static Properties readPomProperties(ZipFile outerZip, String entryName) {
         ZipEntry entry = outerZip.getEntry(entryName);
         if (entry == null) {
             return null;
         }
+        Properties result = null;
         try (InputStream is = outerZip.getInputStream(entry);
                 ZipInputStream zis = new ZipInputStream(is)) {
             ZipEntry ze;
             while ((ze = zis.getNextEntry()) != null) {
                 if (ze.getName().startsWith("META-INF/maven/")
                         && ze.getName().endsWith("/pom.properties")) {
-                    Properties props = new Properties();
-                    props.load(zis);
-                    return props;
+                    if (result != null) {
+                        log.debug("Multiple pom.properties in {}, skipping identification"
+                                + " (likely a shaded JAR)", entryName);
+                        return null;
+                    }
+                    result = new Properties();
+                    result.load(zis);
                 }
             }
         } catch (IOException e) {
             log.debug("Failed to parse pom.properties from nested JAR {}", entryName, e);
         }
-        return null;
+        return result;
     }
 
     /**

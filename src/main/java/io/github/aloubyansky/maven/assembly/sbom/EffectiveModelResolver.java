@@ -87,7 +87,8 @@ public class EffectiveModelResolver {
     }
 
     /**
-     * Indexes reactor projects by their artifact coordinates.
+     * Indexes reactor projects by POM coordinates so lookups match
+     * regardless of the project's packaging type.
      */
     private static Map<ArtifactCoords, Model> indexReactorModels(List<MavenProject> projects) {
         if (projects == null || projects.isEmpty()) {
@@ -95,9 +96,13 @@ public class EffectiveModelResolver {
         }
         Map<ArtifactCoords, Model> index = new HashMap<>(projects.size());
         for (MavenProject p : projects) {
-            index.put(ArtifactCoords.of(p), p.getModel());
+            index.put(pom(p.getGroupId(), p.getArtifactId(), p.getVersion()), p.getModel());
         }
         return index;
+    }
+
+    private static ArtifactCoords pom(String groupId, String artifactId, String version) {
+        return new ArtifactCoords(groupId, artifactId, version, "pom", null);
     }
 
     /**
@@ -116,7 +121,7 @@ public class EffectiveModelResolver {
      *         be resolved or built
      */
     public Model resolveEffectiveModel(String groupId, String artifactId, String version) {
-        ArtifactCoords id = ArtifactCoords.of(groupId, artifactId, version);
+        ArtifactCoords id = pom(groupId, artifactId, version);
         Model cached = cache.get(id);
         if (cached != null) {
             return cached;

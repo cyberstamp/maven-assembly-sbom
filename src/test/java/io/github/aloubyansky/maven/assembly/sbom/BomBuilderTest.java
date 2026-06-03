@@ -70,6 +70,20 @@ class BomBuilderTest {
     }
 
     @Test
+    void purlEncodesSpecialCharactersInClassifier() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+        builder.addMavenArtifact(
+                new ArtifactCoords("org.foo", "bar", "3.0", "jar", "linux+debug"),
+                null, null, null);
+        Bom bom = builder.build();
+
+        Component comp = findByName(bom, "bar");
+        assertNotNull(comp);
+        assertEquals("pkg:maven/org.foo/bar@3.0?type=jar&classifier=linux%2Bdebug",
+                comp.getPurl());
+    }
+
+    @Test
     void testJarPurlOmitsHandlerProvidedClassifier() {
         BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
         builder.addMavenArtifact(
@@ -137,6 +151,30 @@ class BomBuilderTest {
         assertNotNull(comp.getEvidence());
         assertEquals("conf/app.properties",
                 comp.getEvidence().getOccurrences().get(0).getLocation());
+    }
+
+    @Test
+    void fileBomRefPreservesPath() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+        builder.addFile("conf/app.properties", "deadbeef");
+        Bom bom = builder.build();
+
+        Component comp = findByName(bom, "app.properties");
+        assertEquals("file:conf/app.properties", comp.getBomRef());
+    }
+
+    @Test
+    void fileBomRefDistinguishesSimilarPaths() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+        builder.addFile("lib/foo-bar", "aaa");
+        builder.addFile("lib-foo/bar", "bbb");
+        Bom bom = builder.build();
+
+        Set<String> refs = new HashSet<>();
+        for (Component c : bom.getComponents()) {
+            assertTrue(refs.add(c.getBomRef()),
+                    "duplicate bomRef: " + c.getBomRef());
+        }
     }
 
     @Test
