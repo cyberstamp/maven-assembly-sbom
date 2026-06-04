@@ -715,22 +715,9 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      * </p>
      */
     private static Dependency toAetherDependency(org.apache.maven.model.Dependency dep) {
-        String type = dep.getType() != null ? dep.getType() : "jar";
-        String classifier = dep.getClassifier();
-        String extension = type;
-        if (classifier == null || classifier.isEmpty()) {
-            String handlerClassifier = ArtifactCoords.handlerClassifier(type);
-            if (handlerClassifier != null) {
-                extension = "jar";
-                classifier = handlerClassifier;
-            }
-        }
         return new Dependency(
-                new org.eclipse.aether.artifact.DefaultArtifact(
-                        dep.getGroupId(), dep.getArtifactId(),
-                        classifier,
-                        extension,
-                        dep.getVersion()),
+                SbomUtils.toAetherArtifact(dep.getGroupId(), dep.getArtifactId(),
+                        dep.getVersion(), dep.getType(), dep.getClassifier()),
                 dep.getScope());
     }
 
