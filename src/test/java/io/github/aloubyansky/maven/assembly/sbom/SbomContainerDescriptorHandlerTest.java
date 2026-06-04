@@ -497,6 +497,18 @@ class SbomContainerDescriptorHandlerTest {
     }
 
     @Test
+    void unsupportedCycloneDxHashAlgorithmThrows() throws Exception {
+        handler.setHashAlgorithm("SHA-224");
+        Path props = createTestFile("data.txt", "hello");
+
+        ZipArchiver archiver = buildArchiver("base/data.txt", props);
+        var ex = assertThrows(ArchiverException.class,
+                () -> handler.finalizeArchiveCreation(archiver));
+        assertTrue(ex.getMessage().contains("CycloneDX"),
+                "error should mention CycloneDX: " + ex.getMessage());
+    }
+
+    @Test
     void invalidFormatThrows() throws Exception {
         handler.setFormat("yaml");
         Path props = createTestFile("data.txt", "hello");

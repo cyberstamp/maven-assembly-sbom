@@ -317,17 +317,32 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
                 return new AssemblyConfig(null, null);
             }
             String destName = destFile.getName();
+            org.apache.maven.model.PluginExecution soleExec = null;
+            Assembly soleAssembly = null;
+            int candidateCount = 0;
             for (org.apache.maven.model.Plugin plugin : project.getBuild().getPlugins()) {
                 if (!"maven-assembly-plugin".equals(plugin.getArtifactId())) {
                     continue;
                 }
+                String defaultFinalName = resolveFinalName(plugin.getConfiguration());
                 for (org.apache.maven.model.PluginExecution exec : plugin.getExecutions()) {
-                    Assembly match = findMatchingDescriptor(exec, destName);
+                    List<Assembly> descriptors = findAllDescriptors(exec);
+                    Assembly match = matchDescriptorByFilename(
+                            exec, destName, defaultFinalName, descriptors);
                     if (match != null) {
                         String classifier = resolveClassifier(exec, match.getId());
                         return new AssemblyConfig(match, classifier);
                     }
+                    for (Assembly candidate : descriptors) {
+                        candidateCount++;
+                        soleExec = exec;
+                        soleAssembly = candidate;
+                    }
                 }
+            }
+            if (candidateCount == 1) {
+                String classifier = resolveClassifier(soleExec, soleAssembly.getId());
+                return new AssemblyConfig(soleAssembly, classifier);
             }
         } catch (Exception e) {
             log.debug("Could not locate assembly descriptor for {}", archiver.getDestFile(), e);
@@ -369,22 +384,20 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     }
 
     /**
-     * Searches descriptor paths in a plugin execution's configuration.
+     * Matches a descriptor by reconstructing the expected archive
+     * filename from {@code finalName} and {@code appendAssemblyId}.
      */
-    private Assembly findMatchingDescriptor(org.apache.maven.model.PluginExecution exec,
-            String destName) {
-        Object descCfg = exec.getConfiguration();
-        if (descCfg == null) {
-            return null;
-        }
-        for (String descriptorPath : extractDescriptorPaths(descCfg)) {
-            Path descriptorFile = resolveDescriptorPath(descriptorPath);
-            if (!Files.isRegularFile(descriptorFile)) {
-                continue;
-            }
-            Assembly assembly = parseAssemblyDescriptor(descriptorFile);
-            if (assembly != null && assembly.getId() != null
-                    && matchesDestFilename(destName, assembly.getId())) {
+    private Assembly matchDescriptorByFilename(
+            org.apache.maven.model.PluginExecution exec,
+            String destName, String defaultFinalName, List<Assembly> descriptors) {
+        String finalName = resolveFinalName(exec.getConfiguration(), defaultFinalName);
+        boolean appendId = !"false".equalsIgnoreCase(
+                getConfigValue(exec.getConfiguration(), "appendAssemblyId"));
+        for (Assembly assembly : descriptors) {
+            String expected = appendId
+                    ? finalName + "-" + assembly.getId()
+                    : finalName;
+            if (destName.startsWith(expected + ".") || destName.equals(expected)) {
                 return assembly;
             }
         }
@@ -392,11 +405,97 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     }
 
     /**
-     * Checks whether the archive filename contains the assembly ID.
+     * Parses all valid assembly descriptors from a plugin execution.
      */
-    private static boolean matchesDestFilename(String destName, String assemblyId) {
-        return destName.contains("-" + assemblyId + ".")
-                || destName.endsWith("-" + assemblyId);
+    private List<Assembly> findAllDescriptors(org.apache.maven.model.PluginExecution exec) {
+        Object descCfg = exec.getConfiguration();
+        if (descCfg == null) {
+            return List.of();
+        }
+        List<Assembly> result = new ArrayList<>();
+        for (String descriptorPath : extractDescriptorPaths(descCfg)) {
+            Path descriptorFile = resolveDescriptorPath(descriptorPath);
+            if (!Files.isRegularFile(descriptorFile)) {
+                continue;
+            }
+            Assembly assembly = parseAssemblyDescriptor(descriptorFile);
+            if (assembly != null && assembly.getId() != null) {
+                result.add(assembly);
+            }
+        }
+        return result;
+    }
+
+    private String resolveFinalName(Object config) {
+        return resolveFinalName(config, project.getBuild().getFinalName());
+    }
+
+    private String resolveFinalName(Object config, String fallback) {
+        String raw = getConfigValue(config, "finalName");
+        if (raw == null) {
+            return fallback;
+        }
+        return interpolate(raw);
+    }
+
+    /**
+     * Reads a configuration value from a possibly-null config object.
+     */
+    private static String getConfigValue(Object config, String key) {
+        if (config instanceof org.codehaus.plexus.util.xml.Xpp3Dom dom) {
+            return getChildValue(dom, key);
+        }
+        return null;
+    }
+
+    /**
+     * Resolves {@code ${...}} property expressions against the project
+     * properties. Returns {@code null} if the input is {@code null} or
+     * any expression cannot be resolved.
+     */
+    private String interpolate(String value) {
+        if (value == null) {
+            return null;
+        }
+        if (!value.contains("${")) {
+            return value;
+        }
+        Properties props = project.getProperties();
+        StringBuilder result = new StringBuilder();
+        int pos = 0;
+        while (pos < value.length()) {
+            int start = value.indexOf("${", pos);
+            if (start < 0) {
+                result.append(value, pos, value.length());
+                break;
+            }
+            result.append(value, pos, start);
+            int end = value.indexOf('}', start + 2);
+            if (end < 0) {
+                return null;
+            }
+            String key = value.substring(start + 2, end);
+            String resolved = props.getProperty(key);
+            if (resolved == null) {
+                resolved = resolveProjectExpression(key);
+            }
+            if (resolved == null) {
+                return null;
+            }
+            result.append(resolved);
+            pos = end + 1;
+        }
+        return result.toString();
+    }
+
+    private String resolveProjectExpression(String key) {
+        return switch (key) {
+            case "project.artifactId" -> project.getArtifactId();
+            case "project.version" -> project.getVersion();
+            case "project.groupId" -> project.getGroupId();
+            case "project.build.finalName" -> project.getBuild().getFinalName();
+            default -> null;
+        };
     }
 
     /**
