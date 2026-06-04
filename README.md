@@ -74,7 +74,7 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 | `output` | `embedded` | Where to write the BOM: `embedded` (inside the archive), `external` (next to the archive file, e.g., `myapp-1.0-dist.zip.cdx.json`), or `all` (both) |
 | `prettyPrint` | `false` | When `true`, the JSON output is indented for readability. Has no effect on XML (always indented) |
 | `failOnMissingLicense` | `false` | When `true`, the build fails if any library component has no license information in its POM |
-| `hashAlgorithm` | `SHA-256` | The hash algorithm used for content hashes (any algorithm supported by `java.security.MessageDigest`) |
+| `hashAlgorithm` | `SHA-256` | The hash algorithm used for content hashes. Must be supported by both `java.security.MessageDigest` and the [CycloneDX specification](https://cyclonedx.org/docs/1.6/json/#hash-alg) (MD5, SHA-1, SHA-256, SHA-384, SHA-512, SHA3-256, SHA3-384, SHA3-512, BLAKE2b-256, BLAKE2b-384, BLAKE2b-512, BLAKE3) |
 | `failOnDuplicateHash` | `true` | When `true`, the build fails if two distinct artifacts have identical content hashes. Set to `false` to log a warning instead |
 
 The generator reads `includeBaseDirectory` from the assembly descriptor. When it is `true`, the base directory prefix is stripped from file paths in the BOM.

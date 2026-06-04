@@ -385,12 +385,9 @@ class ArchiveAnalyzer {
         content.addNestedEntry(new ArchiveContent.NestedMavenEntry(
                 parentId, nestedId, archiveEntry.path(), archiveEntry.hash()));
         content.addDependencyEdge(parentId, nestedId);
-        String classifier = artifact.getClassifier();
         content.addNestedDependency(parentId, new Dependency(
-                new org.eclipse.aether.artifact.DefaultArtifact(
-                        artifact.getGroupId(), artifact.getArtifactId(),
-                        classifier != null ? classifier : "",
-                        artifact.getType(), artifact.getVersion()),
+                SbomUtils.toAetherArtifact(artifact.getGroupId(), artifact.getArtifactId(),
+                        artifact.getVersion(), artifact.getType(), artifact.getClassifier()),
                 "compile"));
     }
 
@@ -483,11 +480,9 @@ class ArchiveAnalyzer {
     private void resolveAndHashDependency(org.apache.maven.model.Dependency dep,
             Map<String, Artifact> map) {
         try {
-            org.eclipse.aether.artifact.DefaultArtifact aetherArtifact = new org.eclipse.aether.artifact.DefaultArtifact(
-                    dep.getGroupId(), dep.getArtifactId(),
-                    dep.getClassifier(),
-                    dep.getType() != null ? dep.getType() : JAR,
-                    dep.getVersion());
+            org.eclipse.aether.artifact.DefaultArtifact aetherArtifact = SbomUtils.toAetherArtifact(
+                    dep.getGroupId(), dep.getArtifactId(), dep.getVersion(),
+                    dep.getType(), dep.getClassifier());
             ArtifactRequest request = new ArtifactRequest(
                     aetherArtifact, project.getRemoteProjectRepositories(), null);
             ArtifactResult result = repoSystem.resolveArtifact(

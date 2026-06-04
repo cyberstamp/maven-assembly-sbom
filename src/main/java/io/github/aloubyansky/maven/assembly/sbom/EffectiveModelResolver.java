@@ -172,8 +172,10 @@ public class EffectiveModelResolver {
             request.setModelSource(new FileModelSource(pomFile));
             request.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
             request.setProcessPlugins(false);
+            // Hashtable.forEach is synchronized, avoiding ConcurrentModificationException
+            // from putAll's unsynchronized entrySet() iteration on the live system properties
             Properties sysProps = new Properties();
-            sysProps.putAll(System.getProperties());
+            System.getProperties().forEach(sysProps::put);
             request.setSystemProperties(sysProps);
             request.setModelResolver(new LocalRepoModelResolver());
             return modelBuilder.build(request).getEffectiveModel();

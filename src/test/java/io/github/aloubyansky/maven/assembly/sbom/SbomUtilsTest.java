@@ -10,8 +10,11 @@ import java.security.MessageDigest;
 import java.util.Date;
 import java.util.Properties;
 
+import org.eclipse.aether.artifact.DefaultArtifact;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class SbomUtilsTest {
 
@@ -80,6 +83,85 @@ class SbomUtilsTest {
         assertNotNull(hash);
         assertEquals(64, hash.length());
         assertEquals("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9", hash);
+    }
+
+    // ---- toAetherArtifact ----
+
+    @Test
+    void toAetherArtifact_plainJar() {
+        DefaultArtifact result = SbomUtils.toAetherArtifact(
+                "org.example", "foo", "1.0", "jar", null);
+        assertEquals("jar", result.getExtension());
+        assertEquals("", result.getClassifier());
+    }
+
+    @Test
+    void toAetherArtifact_nullTypeDefaultsToJar() {
+        DefaultArtifact result = SbomUtils.toAetherArtifact(
+                "org.example", "foo", "1.0", null, null);
+        assertEquals("jar", result.getExtension());
+    }
+
+    @Test
+    void toAetherArtifact_war() {
+        DefaultArtifact result = SbomUtils.toAetherArtifact(
+                "org.example", "foo", "1.0", "war", null);
+        assertEquals("war", result.getExtension());
+        assertEquals("", result.getClassifier());
+    }
+
+    @Test
+    void toAetherArtifact_jarWithExplicitClassifier() {
+        DefaultArtifact result = SbomUtils.toAetherArtifact(
+                "org.example", "foo", "1.0", "jar", "linux-x86_64");
+        assertEquals("jar", result.getExtension());
+        assertEquals("linux-x86_64", result.getClassifier());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "test-jar,  tests",
+            "ejb-client, client",
+            "java-source, sources",
+            "javadoc,   javadoc"
+    })
+    void toAetherArtifact_handlerClassifiedTypeWithNoClassifier(
+            String mavenType, String expectedClassifier) {
+        DefaultArtifact result = SbomUtils.toAetherArtifact(
+                "org.example", "foo", "1.0", mavenType, null);
+        assertEquals("jar", result.getExtension());
+        assertEquals(expectedClassifier, result.getClassifier());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "test-jar,  tests",
+            "ejb-client, client",
+            "java-source, sources",
+            "javadoc,   javadoc"
+    })
+    void toAetherArtifact_handlerClassifiedTypeWithHandlerClassifier(
+            String mavenType, String handlerClassifier) {
+        DefaultArtifact result = SbomUtils.toAetherArtifact(
+                "org.example", "foo", "1.0", mavenType, handlerClassifier);
+        assertEquals("jar", result.getExtension());
+        assertEquals(handlerClassifier, result.getClassifier());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "test-jar,  tests",
+            "ejb-client, client",
+            "java-source, sources",
+            "javadoc,   javadoc"
+    })
+    void toAetherArtifact_roundTripWithArtifactCoords(
+            String mavenType, String handlerClassifier) {
+        DefaultArtifact aether = SbomUtils.toAetherArtifact(
+                "org.example", "foo", "1.0", mavenType, null);
+        ArtifactCoords coords = ArtifactCoords.of(aether);
+        assertEquals(mavenType, coords.type());
+        assertNull(coords.classifier());
     }
 
     @Test

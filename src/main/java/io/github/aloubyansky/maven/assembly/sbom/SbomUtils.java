@@ -131,6 +131,38 @@ final class SbomUtils {
     }
 
     /**
+     * Creates an Aether artifact from Maven coordinates, normalizing
+     * Maven packaging types to the Aether extension and classifier
+     * expected by the repository layout.
+     *
+     * <p>
+     * Maven types with an implicit handler classifier (e.g.
+     * {@code test-jar} → {@code tests}) are converted to
+     * extension {@code "jar"} with the handler classifier applied
+     * when no explicit classifier is present.
+     * </p>
+     */
+    static org.eclipse.aether.artifact.DefaultArtifact toAetherArtifact(
+            String groupId, String artifactId, String version,
+            String type, String classifier) {
+        if (type == null || type.isEmpty()) {
+            type = "jar";
+        }
+        String extension = type;
+        String handlerClassifier = ArtifactCoords.handlerClassifier(type);
+        if (handlerClassifier != null) {
+            extension = "jar";
+            if (classifier == null || classifier.isEmpty()) {
+                classifier = handlerClassifier;
+            }
+        }
+        return new org.eclipse.aether.artifact.DefaultArtifact(
+                groupId, artifactId,
+                classifier != null ? classifier : "",
+                extension, version);
+    }
+
+    /**
      * Computes the hex-encoded hash of the data read from the given
      * stream using the provided digest. The digest is reset before use.
      * The stream is read to completion but not closed.
