@@ -663,14 +663,20 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      */
     private void writeBomOutput(Bom bom, String baseDirPrefix, Archiver archiver)
             throws IOException, org.cyclonedx.exception.GeneratorException {
+        Path externalBomPath = null;
         if (isExternal()) {
-            Path externalPath = resolveExternalBomPath(archiver);
-            if (externalPath != null) {
-                writeBomToExternalFile(bom, externalPath, archiver);
+            externalBomPath = resolveExternalBomPath(archiver);
+            if (externalBomPath != null) {
+                Files.createDirectories(externalBomPath.getParent());
+                writeBom(bom, externalBomPath);
             }
         }
+        Path tempFile = null;
         if (isEmbedded()) {
-            writeBomToArchive(bom, baseDirPrefix, archiver);
+            tempFile = writeBomToArchive(bom, baseDirPrefix, archiver);
+        }
+        if (externalBomPath != null || tempFile != null) {
+            registerPostArchiveHook(archiver, bom, externalBomPath, tempFile);
         }
     }
 
@@ -687,18 +693,8 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     }
 
     /**
-     * Writes the BOM externally and registers a post-archive hash callback.
-     */
-    private void writeBomToExternalFile(Bom bom, Path bomPath, Archiver archiver)
-            throws IOException, org.cyclonedx.exception.GeneratorException {
-        Files.createDirectories(bomPath.getParent());
-        writeBom(bom, bomPath);
-        registerArchiveHashCallback(archiver, bom, bomPath);
-    }
-
-    /**
-     * Registers a callback to compute the archive's hash after it is
-     * written and update the BOM file.
+     * Registers a single post-archive closeable that updates the external
+     * BOM with the archive hash and deletes the embedded BOM temp file.
      *
      * <p>
      * The Plexus Archiver API provides no public post-write hook.
@@ -709,22 +705,34 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      * </p>
      */
     @SuppressWarnings("unchecked")
-    private void registerArchiveHashCallback(Archiver archiver, Bom bom, Path bomPath) {
+    private void registerPostArchiveHook(Archiver archiver, Bom bom,
+            Path externalBomPath, Path tempFile) {
         try {
             java.lang.reflect.Field field = findField(archiver.getClass(), "closeables");
             if (field == null) {
-                log.warn("Could not find closeables field on archiver, "
-                        + "archive hash will not be added to the external BOM");
+                if (externalBomPath != null) {
+                    log.warn("Could not find closeables field on archiver, "
+                            + "archive hash will not be added to the external BOM");
+                }
                 return;
             }
             field.setAccessible(true);
             List<java.io.Closeable> closeables = (List<java.io.Closeable>) field.get(archiver);
             MessageDigest digest = messageDigest;
             Hash.Algorithm algorithm = bomHashAlgorithm;
-            closeables.add(() -> updateBomWithArchiveHash(archiver, bom, bomPath, digest, algorithm));
+            closeables.add(() -> {
+                if (externalBomPath != null) {
+                    updateBomWithArchiveHash(archiver, bom, externalBomPath, digest, algorithm);
+                }
+                if (tempFile != null) {
+                    Files.deleteIfExists(tempFile);
+                }
+            });
         } catch (Exception e) {
-            log.warn("Could not register archive hash callback, "
-                    + "archive hash will not be added to the external BOM", e);
+            if (externalBomPath != null) {
+                log.warn("Could not register post-archive hook, "
+                        + "archive hash will not be added to the external BOM", e);
+            }
         }
     }
 
@@ -765,14 +773,9 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     /**
      * Writes the BOM to a temp file and adds it to the archive.
      *
-     * <p>
-     * The temp file is created inside the project's build output
-     * directory so that {@code mvn clean} removes it. It must persist
-     * until the archiver consumes it in {@code createArchive()}, so a
-     * try-finally cleanup would delete the file prematurely.
-     * </p>
+     * @return the temp file path, for cleanup after the archive is written
      */
-    private void writeBomToArchive(Bom bom, String baseDirPrefix, Archiver archiver)
+    private Path writeBomToArchive(Bom bom, String baseDirPrefix, Archiver archiver)
             throws IOException, org.cyclonedx.exception.GeneratorException {
         Path targetDir = Path.of(project.getBuild().getDirectory());
         Files.createDirectories(targetDir);
@@ -782,6 +785,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
                 ? baseDirPrefix + outputPath
                 : outputPath;
         archiver.addFile(tempFile.toFile(), bomArchivePath);
+        return tempFile;
     }
 
     /**
