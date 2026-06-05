@@ -472,6 +472,52 @@ class ArchiveAnalyzerTest {
                 .anyMatch(e -> "beta".equals(e.artifactId().artifactId())));
     }
 
+    @Test
+    void shadedJarWithMissingOwnerVersionFallsBackToFileNested() throws Exception {
+        // Owner pom.properties has no version — tryRegisterFromProps will fail.
+        // Bundled dep info must not be silently lost.
+        Path shadedJar = tempDir.resolve("shaded-1.0.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(shadedJar))) {
+            jos.putNextEntry(new JarEntry("data.txt"));
+            jos.write("content".getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("META-INF/maven/com.example/shaded/pom.properties"));
+            jos.write("groupId=com.example\nartifactId=shaded\n".getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("META-INF/maven/com.bundled/lib/pom.properties"));
+            jos.write("groupId=com.bundled\nartifactId=lib\nversion=2.0\n"
+                    .getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+        }
+
+        Path warFile = tempDir.resolve("app-1.0.war");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(warFile))) {
+            jos.putNextEntry(new JarEntry("WEB-INF/lib/shaded-1.0.jar"));
+            jos.write(Files.readAllBytes(shadedJar));
+            jos.closeEntry();
+        }
+
+        Artifact warArtifact = createArtifact("org.example", "app", "1.0", "war",
+                warFile.toFile());
+        when(project.getArtifacts()).thenReturn(Set.of(warArtifact));
+
+        String hash = SbomUtils.computeHash(digest, shadedJar);
+        List<ArchiveContent.FileEntry> entries = List.of(
+                new ArchiveContent.FileEntry("web/app/WEB-INF/lib/shaded-1.0.jar", hash));
+
+        ArchiveAnalyzer analyzer = createAnalyzer();
+        ArchiveContent content = analyzer.analyze(entries, null);
+
+        assertEquals(1, content.mavenEntries().size(), "WAR should be matched");
+        // Owner registration failed, so the JAR should be unmatched
+        assertEquals(1, content.unmatchedFiles().size(),
+                "shaded JAR should be preserved as unmatched file");
+        // The bundled dep with valid coords must still be recorded
+        assertTrue(content.fileNestedArtifacts().stream()
+                .anyMatch(e -> "lib".equals(e.artifactId().artifactId())),
+                "bundled dep should be recorded as file-nested artifact");
+    }
+
     // --- helpers ---
 
     private ArchiveAnalyzer createAnalyzer() {

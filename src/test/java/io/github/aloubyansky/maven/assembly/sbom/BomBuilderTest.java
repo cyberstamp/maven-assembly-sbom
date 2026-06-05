@@ -337,17 +337,61 @@ class BomBuilderTest {
         assertNotNull(nested1);
         assertEquals(Component.Type.LIBRARY, nested1.getType());
         assertEquals("com.bundled", nested1.getGroup());
+        assertNotNull(nested1.getEvidence(), "file-nested component should have evidence");
+        assertNotNull(nested1.getEvidence().getOccurrences(),
+                "file-nested component should have occurrence");
+        assertEquals("lib/shaded-1.0.jar",
+                nested1.getEvidence().getOccurrences().get(0).getLocation(),
+                "occurrence should point to the parent JAR");
 
         Component nested2 = file.getComponents().stream()
                 .filter(c -> "shaded".equals(c.getName())).findFirst().orElse(null);
         assertNotNull(nested2);
         assertNotNull(nested2.getLicenseChoice());
         assertEquals("Apache-2.0", nested2.getLicenseChoice().getLicenses().get(0).getId());
+        assertNotNull(nested2.getEvidence(), "file-nested component should have evidence");
+        assertEquals("lib/shaded-1.0.jar",
+                nested2.getEvidence().getOccurrences().get(0).getLocation());
 
         assertNull(findByName(bom, "shaded"),
                 "nested library should NOT appear as top-level component");
         assertNull(findByName(bom, "bundled-lib"),
                 "nested library should NOT appear as top-level component");
+    }
+
+    @Test
+    void duplicateCoordsAcrossNestedAndFileNestedPreservesContainment() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+
+        // gson nested under WAR-1 as a normal nested artifact
+        ArtifactCoords war1 = new ArtifactCoords("org.a", "war1", "1.0", "war", null);
+        ArtifactCoords gson = new ArtifactCoords("com.google", "gson", "2.10", "jar", null);
+        builder.addMavenArtifact(war1, "lib/war1-1.0.war", "hash1", null);
+        builder.addNestedMavenArtifact(war1, gson, "lib/war1-1.0.war/WEB-INF/lib/gson-2.10.jar",
+                "gsonhash", null);
+
+        // gson also bundled inside an ambiguous shaded JAR (file component)
+        builder.addFile("lib/shaded-1.0.jar", "shadedhash");
+        builder.addNestedArtifactUnderFile("lib/shaded-1.0.jar", gson, null);
+
+        Bom bom = builder.build();
+
+        // gson should appear as nested under WAR-1
+        Component war1Comp = findByName(bom, "war1");
+        assertNotNull(war1Comp);
+        assertNotNull(war1Comp.getComponents(), "WAR-1 should have nested components");
+        assertTrue(war1Comp.getComponents().stream()
+                .anyMatch(c -> "gson".equals(c.getName())),
+                "gson should be nested under WAR-1");
+
+        // gson should also appear as nested under the shaded JAR file
+        Component shadedFile = findByName(bom, "shaded-1.0.jar");
+        assertNotNull(shadedFile);
+        assertNotNull(shadedFile.getComponents(),
+                "shaded JAR file should have nested components");
+        assertTrue(shadedFile.getComponents().stream()
+                .anyMatch(c -> "gson".equals(c.getName())),
+                "gson should also be nested under the shaded JAR file");
     }
 
     @Test

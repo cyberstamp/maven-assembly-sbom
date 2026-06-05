@@ -131,6 +131,9 @@ class ArchiveContent {
         for (NestedMavenEntry e : nestedEntries) {
             ids.add(e.artifactId());
         }
+        for (FileNestedArtifact e : fileNestedArtifacts) {
+            ids.add(e.artifactId());
+        }
         return ids;
     }
 }

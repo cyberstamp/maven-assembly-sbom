@@ -195,4 +195,12 @@ final class SbomUtils {
             return computeHash(digest, is);
         }
     }
+
+    /**
+     * Extracts the filename from a path (everything after the last '/').
+     */
+    static String extractFileName(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash >= 0 ? path.substring(slash + 1) : path;
+    }
 }
