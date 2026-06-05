@@ -164,6 +164,12 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
         for (var e : content.unmatchedFiles()) {
             builder.addFile(e.path(), e.hash());
         }
+        for (var e : content.fileNestedArtifacts()) {
+            ArtifactCoords id = e.artifactId();
+            builder.addNestedArtifactUnderFile(e.filePath(), id,
+                    licenseResolver.resolveLicenses(
+                            id.groupId(), id.artifactId(), id.version()));
+        }
         buildDependencyGraph(builder, content);
     }
 

@@ -315,6 +315,55 @@ class BomBuilderTest {
     }
 
     @Test
+    void nestedArtifactUnderFileCreatesNestedLibraries() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+        builder.addFile("lib/shaded-1.0.jar", "aabbcc");
+        builder.addNestedArtifactUnderFile("lib/shaded-1.0.jar",
+                new ArtifactCoords("com.example", "shaded", "1.0", "jar", null),
+                createLicenseChoice("Apache-2.0"));
+        builder.addNestedArtifactUnderFile("lib/shaded-1.0.jar",
+                new ArtifactCoords("com.bundled", "bundled-lib", "2.0", "jar", null),
+                null);
+        Bom bom = builder.build();
+
+        Component file = findByName(bom, "shaded-1.0.jar");
+        assertNotNull(file, "FILE component should exist");
+        assertEquals(Component.Type.FILE, file.getType());
+        assertNotNull(file.getComponents(), "FILE should have nested components");
+        assertEquals(2, file.getComponents().size());
+
+        Component nested1 = file.getComponents().stream()
+                .filter(c -> "bundled-lib".equals(c.getName())).findFirst().orElse(null);
+        assertNotNull(nested1);
+        assertEquals(Component.Type.LIBRARY, nested1.getType());
+        assertEquals("com.bundled", nested1.getGroup());
+
+        Component nested2 = file.getComponents().stream()
+                .filter(c -> "shaded".equals(c.getName())).findFirst().orElse(null);
+        assertNotNull(nested2);
+        assertNotNull(nested2.getLicenseChoice());
+        assertEquals("Apache-2.0", nested2.getLicenseChoice().getLicenses().get(0).getId());
+
+        assertNull(findByName(bom, "shaded"),
+                "nested library should NOT appear as top-level component");
+        assertNull(findByName(bom, "bundled-lib"),
+                "nested library should NOT appear as top-level component");
+    }
+
+    @Test
+    void nestedArtifactUnderFileWithoutFileIsIgnored() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+        // Add nested artifact without first adding the file — should not crash
+        builder.addNestedArtifactUnderFile("nonexistent/path.jar",
+                new ArtifactCoords("com.example", "orphan", "1.0", "jar", null), null);
+        Bom bom = builder.build();
+
+        assertNull(findByName(bom, "orphan"),
+                "orphaned nested artifact should not appear as top-level");
+        assertTrue(bom.getComponents().isEmpty());
+    }
+
+    @Test
     void emptyBomHasOnlyMetadata() {
         BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
         Bom bom = builder.build();

@@ -344,7 +344,8 @@ class SbomContainerDescriptorHandlerTest {
                 "nested JAR occurrence should be relative to distribution root");
 
         Component html = findComponent(bom, Component.Type.FILE, "index.html");
-        assertNull(html, "non-JAR nested files should not be FILE components");
+        assertNotNull(html,
+                "non-identifiable nested files should be preserved as FILE components");
 
         String warRef = war.getBomRef();
         var warDep = bom.getDependencies().stream()
@@ -403,6 +404,57 @@ class SbomContainerDescriptorHandlerTest {
         assertTrue(warDep.getDependencies().stream()
                 .anyMatch(d -> d.getRef().equals(jolokia.getBomRef())),
                 "WAR should depend on jolokia-json");
+    }
+
+    @Test
+    void shadedJarArtifactsNestedUnderFileComponent() throws Exception {
+        // Shaded JAR with ambiguous filename — both artifactIds appear in it
+        Path shadedJar = tempDir.resolve("ab-cd-1.0.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(shadedJar))) {
+            jos.putNextEntry(new JarEntry("data.txt"));
+            jos.write("shaded-data".getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("META-INF/maven/com.example/ab/pom.properties"));
+            jos.write("groupId=com.example\nartifactId=ab\nversion=1.0\n"
+                    .getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("META-INF/maven/com.other/cd/pom.properties"));
+            jos.write("groupId=com.other\nartifactId=cd\nversion=2.0\n"
+                    .getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+        }
+
+        Path warFile = tempDir.resolve("mywar-1.0.war");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(warFile))) {
+            jos.putNextEntry(new JarEntry("WEB-INF/lib/ab-cd-1.0.jar"));
+            jos.write(Files.readAllBytes(shadedJar));
+            jos.closeEntry();
+        }
+
+        Artifact warArtifact = createArtifact("org.example", "mywar", "1.0",
+                "war", warFile.toFile());
+        when(project.getArtifacts()).thenReturn(Set.of(warArtifact));
+
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(tempDir.resolve("out-shaded.zip").toFile());
+        archiver.addFile(shadedJar.toFile(),
+                "base/web/mywar/WEB-INF/lib/ab-cd-1.0.jar");
+        handler.finalizeArchiveCreation(archiver);
+
+        Bom bom = readBomFromArchiver(archiver);
+
+        Component war = findComponent(bom, Component.Type.LIBRARY, "mywar");
+        assertNotNull(war, "WAR should be detected");
+
+        Component file = findComponent(bom, Component.Type.FILE, "ab-cd-1.0.jar");
+        assertNotNull(file, "shaded JAR should appear as FILE component");
+        assertNotNull(file.getComponents(),
+                "FILE component should have nested library components");
+        assertEquals(2, file.getComponents().size());
+        assertTrue(file.getComponents().stream()
+                .anyMatch(c -> "ab".equals(c.getName()) && "1.0".equals(c.getVersion())));
+        assertTrue(file.getComponents().stream()
+                .anyMatch(c -> "cd".equals(c.getName()) && "2.0".equals(c.getVersion())));
     }
 
     @Test

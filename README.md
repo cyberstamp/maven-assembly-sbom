@@ -113,7 +113,8 @@ pkg:maven/org.apache.commons/commons-io@2.22.0?type=jar
 When an assembly descriptor unpacks an artifact (e.g., a WAR with `<unpack>true</unpack>`), the handler detects the unpacked content by comparing SHA-256 hashes of the artifact's internal entries against the archive entries.
 
 - The unpacked artifact is added as a single **library** component.
-- Individual files from the unpacked archive are **not** listed as separate file components.
+- Individual files from the unpacked archive that can be identified are **not** listed as separate file components — they appear as nested **library** components.
+- Files that cannot be identified remain as **file** components.
 - Nested JARs within the unpacked archive (e.g., JARs in a WAR's `WEB-INF/lib/`) are identified as separate **library** components with proper Maven PURLs.
 
 Nested JAR identification uses three strategies:
@@ -121,6 +122,14 @@ Nested JAR identification uses three strategies:
 1. **Reactor module lookup** — if the unpacked artifact is a module in the current reactor build, its resolved Maven dependencies are used to identify nested JARs by content hash.
 2. **Effective POM resolution** — for non-reactor artifacts, the handler builds the artifact's effective POM model and resolves its compile/runtime-scoped dependencies from the Maven repository, then matches nested JARs by content hash.
 3. **`pom.properties` parsing** — as a fallback, the handler reads `META-INF/maven/**/pom.properties` from inside each nested JAR to extract Maven coordinates.
+
+### Shaded / Fat JAR Detection
+
+Shaded (fat) JARs bundle their dependencies inside a single JAR file. These JARs contain multiple `META-INF/maven/**/pom.properties` entries — one for the main artifact and one for each bundled dependency.
+
+When a nested JAR contains multiple `pom.properties` entries, the handler attempts to identify the owner by matching the JAR filename against the `artifactId` values. For example, a file named `nimbus-jose-jwt-10.6.jar` containing `pom.properties` for `nimbus-jose-jwt`, `jcip-annotations`, and `gson` would be identified as `nimbus-jose-jwt` because only that `artifactId` appears in the filename. The bundled dependencies (`jcip-annotations` and `gson`) are then registered as nested **library** components under the identified artifact.
+
+When the filename is ambiguous (zero or multiple `artifactId` values match), the JAR appears as a **file** component with the discovered Maven artifacts nested as **library** sub-components. This preserves all available identity information without making an incorrect attribution.
 
 ### Dependency Graph
 
@@ -142,8 +151,8 @@ The generator produces deterministic output for reproducible builds:
 | Component Type | When Used |
 |---|---|
 | `application` | The main assembly (appears in BOM metadata) |
-| `library` | Maven artifacts — both packed JARs and unpacked archives |
-| `file` | Non-artifact files (config files, scripts, schemas, licenses, etc.) |
+| `library` | Maven artifacts — both packed JARs and unpacked archives. May appear as nested sub-components of other `library` or `file` components (e.g., bundled dependencies inside a shaded JAR) |
+| `file` | Non-artifact files (config files, scripts, schemas, licenses, etc.) and JARs that could not be positively identified as Maven artifacts. May contain nested `library` sub-components when Maven artifacts are discovered inside (e.g., via `pom.properties` in a shaded JAR) |
 
 The main `application` component's PURL includes the archive type derived from the output filename (e.g., `zip`, `tar.gz`) and a classifier. The classifier is determined from the assembly plugin configuration: if an explicit `<classifier>` is set it is used, otherwise the assembly descriptor id is used unless `<appendAssemblyId>` is `false`, in which case the classifier is omitted.
 

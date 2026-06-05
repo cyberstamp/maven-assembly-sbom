@@ -65,6 +65,8 @@ public class BomBuilder {
     private final Map<ArtifactCoords, String> bomRefById = new HashMap<>();
     private final Map<ArtifactCoords, Component> componentsById = new HashMap<>();
     private final Map<ArtifactCoords, List<Component>> nestedComponentsByParent = new HashMap<>();
+    private final Map<String, Component> fileComponentsByPath = new HashMap<>();
+    private final Map<String, List<Component>> nestedComponentsByFile = new HashMap<>();
     private final Set<String> directChildren = new HashSet<>();
     private final Map<ArtifactCoords, Set<ArtifactCoords>> explicitDeps = new HashMap<>();
     private LicenseChoice projectLicenses;
@@ -216,6 +218,25 @@ public class BomBuilder {
         }
         directChildren.add(comp.getBomRef());
         components.add(comp);
+        fileComponentsByPath.put(archivePath, comp);
+    }
+
+    /**
+     * Registers a Maven artifact as a nested sub-component of a FILE
+     * component (e.g. an artifact discovered via pom.properties inside
+     * a shaded JAR that could not be positively identified as the owner).
+     *
+     * @param filePath the archive path of the parent FILE component
+     * @param coords the Maven artifact coordinates
+     * @param licenses the resolved license information, or {@code null}
+     */
+    public void addNestedArtifactUnderFile(String filePath, ArtifactCoords coords,
+            LicenseChoice licenses) {
+        Component comp = registerMavenComponent(coords, null, null, licenses);
+        if (comp != null) {
+            nestedComponentsByFile.computeIfAbsent(filePath, k -> new ArrayList<>())
+                    .add(comp);
+        }
     }
 
     /**
@@ -317,11 +338,17 @@ public class BomBuilder {
      * sorted by group/name/version for deterministic output.
      */
     private void attachNestedComponents() {
-        if (nestedComponentsByParent.isEmpty()) {
-            return;
-        }
         for (Map.Entry<ArtifactCoords, List<Component>> entry : nestedComponentsByParent.entrySet()) {
             Component parent = componentsById.get(entry.getKey());
+            if (parent == null) {
+                continue;
+            }
+            List<Component> nested = entry.getValue();
+            nested.sort(COMPONENT_ORDER);
+            parent.setComponents(nested);
+        }
+        for (Map.Entry<String, List<Component>> entry : nestedComponentsByFile.entrySet()) {
+            Component parent = fileComponentsByPath.get(entry.getKey());
             if (parent == null) {
                 continue;
             }

@@ -50,11 +50,25 @@ class ArchiveContent {
     record DependencyEdge(ArtifactCoords parent, ArtifactCoords child) {
     }
 
+    /**
+     * A Maven artifact discovered inside a file (e.g. via pom.properties
+     * in a shaded JAR) that should be nested under the file's component.
+     *
+     * <p>
+     * The file at {@code filePath} is most likely a Maven artifact itself
+     * (e.g. a shaded or fat JAR) that could not be positively identified
+     * because its filename matched zero or multiple embedded artifactIds.
+     * </p>
+     */
+    record FileNestedArtifact(String filePath, ArtifactCoords artifactId) {
+    }
+
     private final List<MavenEntry> mavenEntries = new ArrayList<>();
     private final List<NestedMavenEntry> nestedEntries = new ArrayList<>();
     private final List<FileEntry> unmatchedFiles = new ArrayList<>();
     private final List<DependencyEdge> explicitDependencies = new ArrayList<>();
     private final Map<ArtifactCoords, List<Dependency>> nestedDepsByParent = new HashMap<>();
+    private final List<FileNestedArtifact> fileNestedArtifacts = new ArrayList<>();
 
     List<MavenEntry> mavenEntries() {
         return mavenEntries;
@@ -76,6 +90,10 @@ class ArchiveContent {
         return nestedDepsByParent;
     }
 
+    List<FileNestedArtifact> fileNestedArtifacts() {
+        return fileNestedArtifacts;
+    }
+
     void addMavenEntry(MavenEntry entry) {
         mavenEntries.add(entry);
     }
@@ -90,6 +108,10 @@ class ArchiveContent {
 
     void addDependencyEdge(ArtifactCoords parent, ArtifactCoords child) {
         explicitDependencies.add(new DependencyEdge(parent, child));
+    }
+
+    void addFileNestedArtifact(String filePath, ArtifactCoords artifactId) {
+        fileNestedArtifacts.add(new FileNestedArtifact(filePath, artifactId));
     }
 
     void addNestedDependency(ArtifactCoords parentId, Dependency dependency) {
