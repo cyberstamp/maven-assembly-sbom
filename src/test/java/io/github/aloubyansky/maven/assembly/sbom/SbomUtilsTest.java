@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.Date;
-import java.util.Properties;
 
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.junit.jupiter.api.Test;
@@ -20,14 +19,6 @@ class SbomUtilsTest {
 
     @TempDir
     Path tempDir;
-
-    // ---- loadToolProperties ----
-
-    @Test
-    void loadToolProperties_returnsNonNull() {
-        Properties props = SbomUtils.loadToolProperties();
-        assertNotNull(props);
-    }
 
     // ---- parseBuildTimestamp ----
 

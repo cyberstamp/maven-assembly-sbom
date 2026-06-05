@@ -224,17 +224,14 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      * Failures are non-fatal.
      */
     private void populateToolMetadata(BomBuilder builder) {
-        Properties toolProps = SbomUtils.loadToolProperties();
-        builder.setToolProperties(toolProps);
-        String toolGroupId = toolProps.getProperty("groupId");
-        String toolArtifactCoords = toolProps.getProperty("artifactId");
-        String toolVersion = toolProps.getProperty("version");
-        if (toolGroupId == null || toolArtifactCoords == null || toolVersion == null) {
-            return;
+        try {
+            builder.setToolLicenses(licenseResolver.resolveLicenses(
+                    ToolInfo.GROUP_ID, ToolInfo.ARTIFACT_ID, ToolInfo.VERSION));
+        } catch (Exception e) {
+            log.debug("Could not resolve tool licenses for {}:{}:{}",
+                    ToolInfo.GROUP_ID, ToolInfo.ARTIFACT_ID, ToolInfo.VERSION, e);
         }
-        builder.setToolLicenses(licenseResolver.resolveLicenses(
-                toolGroupId, toolArtifactCoords, toolVersion));
-        resolveToolHash(builder, toolGroupId, toolArtifactCoords, toolVersion);
+        resolveToolHash(builder, ToolInfo.GROUP_ID, ToolInfo.ARTIFACT_ID, ToolInfo.VERSION);
     }
 
     /**

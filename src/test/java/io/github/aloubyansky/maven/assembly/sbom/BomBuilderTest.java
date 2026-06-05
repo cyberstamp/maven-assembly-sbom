@@ -426,8 +426,13 @@ class BomBuilderTest {
         List<Component> tools = bom.getMetadata().getToolChoice().getComponents();
         assertNotNull(tools);
         assertEquals(1, tools.size());
-        assertEquals("assembly-cyclonedx-generator", tools.get(0).getName());
-        assertEquals(Component.Type.APPLICATION, tools.get(0).getType());
+        Component tool = tools.get(0);
+        assertEquals(ToolInfo.GROUP_ID, tool.getGroup());
+        assertEquals(ToolInfo.ARTIFACT_ID, tool.getName());
+        assertEquals(ToolInfo.VERSION, tool.getVersion());
+        assertEquals(Component.Type.APPLICATION, tool.getType());
+        assertNotNull(tool.getPurl());
+        assertTrue(tool.getPurl().startsWith("pkg:maven/"));
     }
 
     @Test

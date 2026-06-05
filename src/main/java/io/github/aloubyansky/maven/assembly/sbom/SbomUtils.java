@@ -11,7 +11,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.HexFormat;
-import java.util.Properties;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,26 +26,6 @@ final class SbomUtils {
     private static final HexFormat HEX = HexFormat.of();
 
     private SbomUtils() {
-    }
-
-    /**
-     * Loads the SBOM generator's Maven coordinates from its embedded
-     * {@code pom.properties} resource.
-     *
-     * @return the loaded properties, or an empty {@link Properties}
-     *         instance if the resource is missing or unreadable
-     */
-    static Properties loadToolProperties() {
-        Properties props = new Properties();
-        try (InputStream is = SbomUtils.class.getResourceAsStream(
-                "/META-INF/maven/io.github.aloubyansky.maven.assembly.sbom"
-                        + "/assembly-cyclonedx-generator/pom.properties")) {
-            if (is != null) {
-                props.load(is);
-            }
-        } catch (IOException ignored) {
-        }
-        return props;
     }
 
     /**

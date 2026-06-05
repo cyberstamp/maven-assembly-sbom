@@ -8,7 +8,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
@@ -70,7 +69,6 @@ public class BomBuilder {
     private final Set<String> directChildren = new HashSet<>();
     private final Map<ArtifactCoords, Set<ArtifactCoords>> explicitDeps = new HashMap<>();
     private LicenseChoice projectLicenses;
-    private Properties toolProperties;
     private LicenseChoice toolLicenses;
     private String toolHash;
     private String archiveType;
@@ -252,14 +250,6 @@ public class BomBuilder {
     }
 
     /**
-     * Sets the tool's Maven properties (groupId, artifactId, version)
-     * loaded from pom.properties on the classpath.
-     */
-    public void setToolProperties(Properties toolProperties) {
-        this.toolProperties = toolProperties;
-    }
-
-    /**
      * Sets the license information for the SBOM generator tool component.
      *
      * @param licenses the tool's license information, or {@code null}
@@ -395,17 +385,13 @@ public class BomBuilder {
      * Creates the tool identity for the BOM metadata.
      */
     private ToolInformation createToolInfo() {
-        Properties props = toolProperties != null ? toolProperties : SbomUtils.loadToolProperties();
         Component tool = new Component();
         tool.setType(Component.Type.APPLICATION);
-        tool.setGroup(props.getProperty("groupId",
-                "io.github.aloubyansky.maven.assembly.sbom"));
-        tool.setName(props.getProperty("artifactId",
-                "assembly-cyclonedx-generator"));
-        String version = props.getProperty("version");
-        if (version != null) {
-            tool.setVersion(version);
-        }
+        tool.setGroup(ToolInfo.GROUP_ID);
+        tool.setName(ToolInfo.ARTIFACT_ID);
+        tool.setVersion(ToolInfo.VERSION);
+        tool.setPurl(buildMavenPurl(ToolInfo.GROUP_ID, ToolInfo.ARTIFACT_ID,
+                ToolInfo.VERSION, "jar", null));
         if (toolLicenses != null) {
             tool.setLicenseChoice(toolLicenses);
         }
