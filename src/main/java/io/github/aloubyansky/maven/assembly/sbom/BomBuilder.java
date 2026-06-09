@@ -64,6 +64,7 @@ public class BomBuilder {
     private final Map<ArtifactCoords, String> bomRefById = new HashMap<>();
     private final Map<ArtifactCoords, Component> componentsById = new HashMap<>();
     private final Map<ArtifactCoords, List<Component>> nestedComponentsByParent = new HashMap<>();
+    private final Map<ArtifactCoords, Set<ArtifactCoords>> nestedIdsByParent = new HashMap<>();
     private final Map<String, Component> fileComponentsByPath = new HashMap<>();
     private final Map<String, List<Component>> nestedComponentsByFile = new HashMap<>();
     private final Set<String> directChildren = new HashSet<>();
@@ -172,6 +173,8 @@ public class BomBuilder {
         if (comp != null) {
             nestedComponentsByParent.computeIfAbsent(parentId, k -> new ArrayList<>())
                     .add(comp);
+            nestedIdsByParent.computeIfAbsent(parentId, k -> new HashSet<>())
+                    .add(coords);
         }
     }
 
@@ -613,7 +616,8 @@ public class BomBuilder {
 
     /**
      * Merges the resolved Maven dependency graph and the explicit
-     * dependency map into a single map.
+     * dependency map into a single map, excluding dependencies that
+     * are already nested components of their parent.
      */
     private Map<ArtifactCoords, Set<ArtifactCoords>> mergeDependencyGraphs() {
         int estimatedSize = (artifactDependencyGraph != null ? artifactDependencyGraph.size() : 0)
@@ -621,8 +625,14 @@ public class BomBuilder {
         Map<ArtifactCoords, Set<ArtifactCoords>> merged = new HashMap<>(estimatedSize);
         if (artifactDependencyGraph != null) {
             for (Map.Entry<ArtifactCoords, List<ArtifactCoords>> e : artifactDependencyGraph.entrySet()) {
-                merged.computeIfAbsent(e.getKey(), k -> new HashSet<>(e.getValue().size()))
-                        .addAll(e.getValue());
+                Set<ArtifactCoords> nested = nestedIdsByParent.getOrDefault(e.getKey(), Set.of());
+                Set<ArtifactCoords> children = merged.computeIfAbsent(e.getKey(),
+                        k -> new HashSet<>(e.getValue().size()));
+                for (ArtifactCoords child : e.getValue()) {
+                    if (!nested.contains(child)) {
+                        children.add(child);
+                    }
+                }
             }
         }
         for (Map.Entry<ArtifactCoords, Set<ArtifactCoords>> e : explicitDeps.entrySet()) {

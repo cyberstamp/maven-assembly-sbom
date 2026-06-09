@@ -315,6 +315,118 @@ class BomBuilderTest {
     }
 
     @Test
+    void shadedDependenciesAsNestedComponentsNotAsDependencies() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+
+        ArtifactCoords shadedId = new ArtifactCoords("com.nimbusds", "nimbus-jose-jwt", "10.0", "jar", null);
+        ArtifactCoords gsonId = new ArtifactCoords("com.google.code.gson", "gson", "2.11.0", "jar", null);
+        ArtifactCoords jcipId = new ArtifactCoords("net.jcip", "jcip-annotations", "1.0", "jar", null);
+
+        builder.addMavenArtifact(shadedId, "lib/nimbus-jose-jwt-10.0.jar", "hash1", null);
+        builder.addNestedMavenArtifact(shadedId, gsonId,
+                "lib/nimbus-jose-jwt-10.0.jar", "hash2", null);
+        builder.addNestedMavenArtifact(shadedId, jcipId,
+                "lib/nimbus-jose-jwt-10.0.jar", "hash3", null);
+
+        // Maven dependency graph still lists the shaded deps as dependencies
+        Map<ArtifactCoords, List<ArtifactCoords>> graph = new HashMap<>();
+        graph.put(shadedId, List.of(gsonId, jcipId));
+        builder.setDependencyGraph(graph);
+
+        Bom bom = builder.build();
+
+        // Nested components should exist under the shaded JAR
+        Component shadedComp = findByName(bom, "nimbus-jose-jwt");
+        assertNotNull(shadedComp);
+        assertNotNull(shadedComp.getComponents(), "shaded JAR should have nested components");
+        assertEquals(2, shadedComp.getComponents().size());
+
+        // Nested components should NOT appear as top-level components
+        assertNull(findByName(bom, "gson"),
+                "gson should NOT appear as top-level component");
+        assertNull(findByName(bom, "jcip-annotations"),
+                "jcip-annotations should NOT appear as top-level component");
+
+        // The shaded JAR should NOT list nested components as dependencies
+        String shadedRef = "pkg:maven/com.nimbusds/nimbus-jose-jwt@10.0?type=jar";
+        Dependency shadedDep = findDependency(bom, shadedRef);
+        if (shadedDep != null && shadedDep.getDependencies() != null) {
+            List<String> depRefs = shadedDep.getDependencies().stream()
+                    .map(Dependency::getRef).toList();
+            assertFalse(depRefs.contains("pkg:maven/com.google.code.gson/gson@2.11.0?type=jar"),
+                    "gson should NOT appear as a dependency of the shaded JAR");
+            assertFalse(depRefs.contains("pkg:maven/net.jcip/jcip-annotations@1.0?type=jar"),
+                    "jcip-annotations should NOT appear as a dependency of the shaded JAR");
+        }
+    }
+
+    @Test
+    void bundledComponentStillAppearsAsDependencyOfOtherArtifact() {
+        BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
+
+        ArtifactCoords shadedId = new ArtifactCoords("com.nimbusds", "nimbus-jose-jwt", "10.0", "jar", null);
+        ArtifactCoords gsonId = new ArtifactCoords("com.google.code.gson", "gson", "2.11.0", "jar", null);
+        ArtifactCoords otherLibId = new ArtifactCoords("org.example", "other-lib", "3.0", "jar", null);
+
+        // all top-level Maven artifacts are registered first (matches real flow)
+        builder.addMavenArtifact(shadedId, "lib/nimbus-jose-jwt-10.0.jar", "hash1", null);
+        builder.addMavenArtifact(otherLibId, "lib/other-lib-3.0.jar", "hash3", null);
+        builder.addMavenArtifact(gsonId, "lib/gson-2.11.0.jar", "hash2", null);
+
+        // then nested entries: nimbus-jose-jwt bundles gson
+        builder.addNestedMavenArtifact(shadedId, gsonId,
+                "lib/nimbus-jose-jwt-10.0.jar", "hash2", null);
+
+        Map<ArtifactCoords, List<ArtifactCoords>> graph = new HashMap<>();
+        graph.put(shadedId, List.of(gsonId));
+        graph.put(otherLibId, List.of(gsonId));
+        builder.setDependencyGraph(graph);
+
+        Bom bom = builder.build();
+
+        String shadedRef = "pkg:maven/com.nimbusds/nimbus-jose-jwt@10.0?type=jar";
+        String gsonRef = "pkg:maven/com.google.code.gson/gson@2.11.0?type=jar";
+        String otherRef = "pkg:maven/org.example/other-lib@3.0?type=jar";
+
+        // gson is nested under the shaded JAR
+        Component shadedComp = findByName(bom, "nimbus-jose-jwt");
+        assertNotNull(shadedComp);
+        assertNotNull(shadedComp.getComponents(), "shaded JAR should have nested components");
+        assertEquals(1, shadedComp.getComponents().size());
+        assertEquals("gson", shadedComp.getComponents().get(0).getName());
+
+        // gson is also a standalone top-level component (added via addMavenArtifact)
+        assertNotNull(findByName(bom, "gson"),
+                "gson should appear as a top-level component since it is also a standalone artifact");
+
+        // the shaded JAR should NOT depend on gson (it bundles it)
+        Dependency shadedDep = findDependency(bom, shadedRef);
+        if (shadedDep != null && shadedDep.getDependencies() != null) {
+            assertFalse(shadedDep.getDependencies().stream()
+                    .anyMatch(d -> gsonRef.equals(d.getRef())),
+                    "gson should NOT be a dependency of the shaded JAR");
+        }
+
+        // other-lib SHOULD still depend on gson
+        Dependency otherDep = findDependency(bom, otherRef);
+        assertNotNull(otherDep, "other-lib should have a dependency entry");
+        assertNotNull(otherDep.getDependencies(), "other-lib should have children");
+        assertTrue(otherDep.getDependencies().stream()
+                .anyMatch(d -> gsonRef.equals(d.getRef())),
+                "other-lib should depend on gson");
+
+        // main should list nimbus, other-lib as direct; gson is transitive via other-lib
+        String mainRef = bom.getMetadata().getComponent().getBomRef();
+        Dependency mainDep = findDependency(bom, mainRef);
+        List<String> mainChildren = mainDep.getDependencies().stream()
+                .map(Dependency::getRef).toList();
+        assertTrue(mainChildren.contains(shadedRef), "main should depend on nimbus");
+        assertTrue(mainChildren.contains(otherRef), "main should depend on other-lib");
+        assertFalse(mainChildren.contains(gsonRef),
+                "gson is transitive via other-lib, not a direct child of main");
+    }
+
+    @Test
     void nestedArtifactUnderFileCreatesNestedLibraries() {
         BomBuilder builder = new BomBuilder("com.example", "app", "1.0", "dist");
         builder.addFile("lib/shaded-1.0.jar", "aabbcc");
