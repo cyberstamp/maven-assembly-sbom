@@ -199,7 +199,7 @@ public class BomBuilder {
         }
         comp.setEvidence(buildMavenEvidence(archivePath));
         if (licenses != null) {
-            comp.setLicenseChoice(licenses);
+            comp.setLicenses(licenses);
         }
 
         bomRefById.put(coords, comp.getBomRef());
@@ -217,7 +217,7 @@ public class BomBuilder {
         Component comp = createFileComponent(archivePath, hash);
         comp.setEvidence(buildFileEvidence(archivePath));
         if (projectLicenses != null) {
-            comp.setLicenseChoice(projectLicenses);
+            comp.setLicenses(projectLicenses);
         }
         directChildren.add(comp.getBomRef());
         components.add(comp);
@@ -396,7 +396,7 @@ public class BomBuilder {
         tool.setPurl(buildMavenPurl(ToolInfo.GROUP_ID, ToolInfo.ARTIFACT_ID,
                 ToolInfo.VERSION, "jar", null));
         if (toolLicenses != null) {
-            tool.setLicenseChoice(toolLicenses);
+            tool.setLicenses(toolLicenses);
         }
         if (toolHash != null) {
             tool.addHash(new Hash(hashAlgorithm, toolHash));
@@ -415,8 +415,6 @@ public class BomBuilder {
         return allComponents;
     }
 
-    // ---- component factories ----
-
     /**
      * Creates the top-level APPLICATION component representing the
      * assembly project itself.
@@ -431,7 +429,7 @@ public class BomBuilder {
         main.setBomRef(purl);
         main.setPurl(purl);
         if (projectLicenses != null) {
-            main.setLicenseChoice(projectLicenses);
+            main.setLicenses(projectLicenses);
         }
         return main;
     }
@@ -473,8 +471,8 @@ public class BomBuilder {
      * have any.
      */
     private void applyLicensesIfAbsent(Component component, LicenseChoice licenses) {
-        if (licenses != null && component.getLicenseChoice() == null) {
-            component.setLicenseChoice(licenses);
+        if (licenses != null && component.getLicenses() == null) {
+            component.setLicenses(licenses);
         }
     }
 
