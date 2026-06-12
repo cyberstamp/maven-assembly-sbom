@@ -3,11 +3,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
-    <artifactId>maven-assembly-cyclonedx</artifactId>
+    <artifactId>assembly-cyclonedx-parent</artifactId>
     <version>0.0.2-SNAPSHOT</version>
+    <packaging>pom</packaging>
 
-    <name>Maven Assembly CycloneDX Generator</name>
-    <description>CycloneDX BOM generator that can be added to the maven-assembly-plugin configuration</description>
+    <name>Assembly CycloneDX Parent</name>
+    <description>Parent POM for Assembly CycloneDX modules</description>
     <url>https://github.com/aloubyansky/maven-assembly-sbom</url>
     <licenses>
         <license>
@@ -28,6 +29,11 @@
         </developer>
     </developers>
 
+    <modules>
+        <module>cyclonedx-handler</module>
+        <module>cyclonedx-maven-plugin</module>
+    </modules>
+
     <properties>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
         <commons.io.version>2.22.0</commons.io.version>
@@ -38,6 +44,8 @@
         <maven.compiler.target>17</maven.compiler.target>
         <maven.resolver.version>1.9.27</maven.resolver.version>
         <maven.version>3.9.16</maven.version>
+        <maven-plugin-api.version>3.9.16</maven-plugin-api.version>
+        <maven-plugin-annotations.version>3.15.1</maven-plugin-annotations.version>
         <mockito.version>5.23.0</mockito.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <sisu.version>1.0.0</sisu.version>
@@ -51,60 +59,30 @@
         <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
     </properties>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-assembly-plugin</artifactId>
-            <version>${assembly.plugin.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.maven</groupId>
-            <artifactId>maven-core</artifactId>
-            <version>${maven.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.maven.resolver</groupId>
-            <artifactId>maven-resolver-api</artifactId>
-            <version>${maven.resolver.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.cyclonedx</groupId>
-            <artifactId>cyclonedx-core-java</artifactId>
-            <version>${cyclonedx.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>javax.inject</groupId>
-            <artifactId>javax.inject</artifactId>
-            <version>${javax.inject.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${junit.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <version>${mockito.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-junit-jupiter</artifactId>
-            <version>${mockito.version}</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-core-java</artifactId>
+                <version>${cyclonedx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>${mockito.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-junit-jupiter</artifactId>
+                <version>${mockito.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <pluginManagement>
@@ -142,34 +120,6 @@
                 </plugin>
             </plugins>
         </pluginManagement>
-        <plugins>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>templating-maven-plugin</artifactId>
-                <version>3.1.0</version>
-                <executions>
-                    <execution>
-                        <id>filter-src</id>
-                        <goals>
-                            <goal>filter-sources</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.eclipse.sisu</groupId>
-                <artifactId>sisu-maven-plugin</artifactId>
-                <version>${sisu.version}</version>
-                <executions>
-                    <execution>
-                        <id>index</id>
-                        <goals>
-                            <goal>main-index</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
     </build>
 
     <profiles>
@@ -335,7 +285,7 @@
                                 <configuration>
                                     <target>
                                         <replaceregexp file="${project.basedir}/README.md"
-                                            match="(&lt;artifactId&gt;maven-assembly-cyclonedx&lt;/artifactId&gt;\s*&lt;version&gt;)[^&lt;]+(&lt;/version&gt;)"
+                                            match="(&lt;artifactId&gt;assembly-cyclonedx-handler&lt;/artifactId&gt;\s*&lt;version&gt;)[^&lt;]+(&lt;/version&gt;)"
                                             replace="\1${project.version}\2"
                                             flags="s" />
                                     </target>

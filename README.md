@@ -1,14 +1,21 @@
-# Assembly CycloneDX SBOM Generator
+# Assembly CycloneDX
 
-Generates a [CycloneDX](https://cyclonedx.org/) Software Bill of Materials (SBOM) for archives produced by the [Maven Assembly Plugin](https://maven.apache.org/plugins/maven-assembly-plugin/).
+Tools for generating and merging [CycloneDX](https://cyclonedx.org/) Software Bills of Materials (SBOMs) in Maven builds.
 
-The generator inspects every file being packaged into the assembly, identifies Maven artifacts, builds a dependency graph, and produces a CycloneDX 1.6 BOM in JSON or XML format. The result is a complete inventory of the assembly's contents — which libraries are included, where they came from, and how they relate to each other.
+## Modules
 
-Implemented as a `ContainerDescriptorHandler`, it hooks into the assembly plugin's archive creation lifecycle and runs automatically as part of `mvn package`.
+| Module | ArtifactId | Description |
+|---|---|---|
+| [cyclonedx-handler](cyclonedx-handler/) | `assembly-cyclonedx-handler` | `ContainerDescriptorHandler` for the Maven Assembly Plugin — inspects archive contents, identifies Maven artifacts, and generates a CycloneDX 1.6 BOM |
+| [cyclonedx-maven-plugin](cyclonedx-maven-plugin/) | `assembly-cyclonedx-maven-plugin` | Maven plugin with a `merge-sbom` goal for combining multiple CycloneDX SBOMs into one |
 
-## Quick Start
+## Assembly Handler
 
-### 1. Add the handler as a plugin dependency
+Generates a CycloneDX SBOM for archives produced by the [Maven Assembly Plugin](https://maven.apache.org/plugins/maven-assembly-plugin/). The handler inspects every file being packaged, identifies Maven artifacts by content hash, builds a dependency graph, and produces a CycloneDX 1.6 BOM in JSON or XML format.
+
+### Quick Start
+
+#### 1. Add the handler as a plugin dependency
 
 ```xml
 <plugin>
@@ -18,15 +25,15 @@ Implemented as a `ContainerDescriptorHandler`, it hooks into the assembly plugin
     <dependencies>
         <dependency>
             <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
-            <artifactId>maven-assembly-cyclonedx</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <artifactId>assembly-cyclonedx-handler</artifactId>
+            <version>0.0.2-SNAPSHOT</version>
         </dependency>
     </dependencies>
     <!-- executions... -->
 </plugin>
 ```
 
-### 2. Reference the handler in your assembly descriptor
+#### 2. Reference the handler in your assembly descriptor
 
 ```xml
 <assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0">
@@ -46,7 +53,7 @@ Implemented as a `ContainerDescriptorHandler`, it hooks into the assembly plugin
 </assembly>
 ```
 
-### 3. Build
+#### 3. Build
 
 ```
 mvn package
@@ -54,7 +61,7 @@ mvn package
 
 The SBOM is embedded in the archive at `bom.cdx.json` (inside the base directory if one is configured).
 
-## Configuration Options
+### Configuration Options
 
 Options are set inside the `<containerDescriptorHandler>` block in the assembly descriptor using `<configuration>`:
 
@@ -89,15 +96,15 @@ Setting `output` to `external` writes the BOM as a separate file next to the arc
 
 Setting `output` to `all` produces both an embedded and an external BOM.
 
-## Features
+### Features
 
-### License Resolution
+#### License Resolution
 
 The generator resolves licenses for every Maven artifact component by reading the artifact's effective POM (including licenses inherited from parent POMs). License names and URLs are mapped to [SPDX](https://spdx.org/licenses/) license identifiers using the CycloneDX license database, which includes exact matches, name matching, URL matching, and fuzzy matching against common license name variants.
 
 When no SPDX match is found, the raw license name and URL from the POM are preserved in the component. If an artifact's effective POM declares no licenses at all, a warning is logged. Set `failOnMissingLicense` to `true` to fail the build instead.
 
-### Artifact Identification
+#### Artifact Identification
 
 Every file in the assembly is inspected and classified as either a **library** (Maven artifact) or a **file** (non-artifact):
 
@@ -110,7 +117,7 @@ Library components include full [Package URL](https://github.com/package-url/pur
 pkg:maven/org.apache.commons/commons-io@2.22.0?type=jar
 ```
 
-### Unpacked Archive Detection
+#### Unpacked Archive Detection
 
 When an assembly descriptor unpacks an artifact (e.g., a WAR with `<unpack>true</unpack>`), the handler detects the unpacked content by comparing SHA-256 hashes of the artifact's internal entries against the archive entries.
 
@@ -125,7 +132,7 @@ Nested JAR identification uses three strategies:
 2. **Effective POM resolution** — for non-reactor artifacts, the handler builds the artifact's effective POM model and resolves its compile/runtime-scoped dependencies from the Maven repository, then matches nested JARs by content hash.
 3. **`pom.properties` parsing** — as a fallback, the handler reads `META-INF/maven/**/pom.properties` from inside each nested JAR to extract Maven coordinates.
 
-### Shaded / Fat JAR Detection
+#### Shaded / Fat JAR Detection
 
 Shaded (fat) JARs bundle their dependencies inside a single JAR file. These JARs contain multiple `META-INF/maven/**/pom.properties` entries — one for the main artifact and one for each bundled dependency.
 
@@ -133,18 +140,18 @@ When a nested JAR contains multiple `pom.properties` entries, the handler attemp
 
 When the filename is ambiguous (zero or multiple `artifactId` values match), the JAR appears as a **file** component with the discovered Maven artifacts nested as **library** sub-components. This preserves all available identity information without making an incorrect attribution.
 
-### Dependency Graph
+#### Dependency Graph
 
 The BOM includes a CycloneDX dependency graph reflecting the Maven dependency tree. Only artifacts that are actually present in the assembly are included.
 
 - **Direct vs. transitive** — the graph preserves the Maven dependency hierarchy. Transitive dependencies are connected through their parent, not listed as direct dependencies of the main component.
 - **Unpacked artifact dependencies** — nested JARs identified within unpacked archives are connected to their parent artifact via dependency edges.
 
-### SBOM Merging
+#### SBOM Merging
 
 Distribution archives often bundle artifacts from non-Maven ecosystems — most commonly JavaScript libraries inside WARs or JARs. The generator can detect and integrate CycloneDX SBOMs from those ecosystems, turning otherwise unidentified files into properly typed LIBRARY components with Package URLs, licenses, and dependency relationships.
 
-#### Auto-detection
+##### Auto-detection
 
 CycloneDX SBOM files (`.cdx.json` or `.cdx.xml`) are automatically detected in two places:
 
@@ -153,7 +160,7 @@ CycloneDX SBOM files (`.cdx.json` or `.cdx.xml`) are automatically detected in t
 
 When both JSON and XML variants of the same SBOM exist (same filename stem in the same directory), the JSON variant is preferred and the XML duplicate is skipped.
 
-#### Handling modes
+##### Handling modes
 
 The `embeddedSbomHandling` option controls what happens with detected SBOMs:
 
@@ -161,7 +168,7 @@ The `embeddedSbomHandling` option controls what happens with detected SBOMs:
 - **`link`** — an `externalReference` of type `bom` is added to the containing artifact, pointing to the SBOM file's location within the archive. The SBOM file remains in the archive.
 - **`ignore`** — embedded SBOMs are not processed.
 
-#### External SBOMs
+##### External SBOMs
 
 The `mergeBoms` option accepts a comma-separated list of file paths to CycloneDX SBOMs generated outside the Maven build (e.g., by `cdxgen`, `@cyclonedx/cyclonedx-npm`, or pnpm). These SBOMs are:
 
@@ -180,7 +187,7 @@ Example configuration:
 </containerDescriptorHandler>
 ```
 
-#### Generating JavaScript SBOMs
+##### Generating JavaScript SBOMs
 
 | Package Manager | Tool |
 |---|---|
@@ -211,9 +218,51 @@ The main `application` component's PURL includes the archive type derived from t
 
 Each component includes CycloneDX `evidence` with `occurrence` entries recording where it appears in the archive. Library components include an `identity` with technique `manifest-analysis` indicating they were identified through Maven artifact metadata.
 
+## Merge Plugin
+
+The `assembly-cyclonedx-maven-plugin` provides a `merge-sbom` goal for combining multiple CycloneDX SBOMs into a single BOM. This is useful when a project produces artifacts containing components from multiple ecosystems (e.g., a WAR with both Maven and npm dependencies).
+
+### Quick Start
+
+```xml
+<plugin>
+    <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
+    <artifactId>assembly-cyclonedx-maven-plugin</artifactId>
+    <version>0.0.2-SNAPSHOT</version>
+    <executions>
+        <execution>
+            <goals>
+                <goal>merge-sbom</goal>
+            </goals>
+            <configuration>
+                <baseBom>${project.build.directory}/bom.json</baseBom>
+                <mergeBoms>
+                    <mergeBom>path/to/js-bom.cdx.json</mergeBom>
+                </mergeBoms>
+                <outputFile>${project.build.directory}/merged-bom.cdx.json</outputFile>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+```
+
+### Configuration
+
+| Option | Default | Description |
+|---|---|---|
+| `baseBom` | _(required)_ | Path to the base SBOM file (e.g., the Maven-generated BOM) |
+| `mergeBoms` | _(required)_ | List of external SBOM files to merge into the base BOM |
+| `outputFile` | `${project.build.directory}/merged-bom.cdx.json` | Path to write the merged BOM |
+| `format` | `json` | Output format: `json` or `xml` |
+| `prettyPrint` | `true` | Whether to indent the JSON output |
+| `nested` | `false` | When `false`, external components are added as top-level components (flat merge). When `true`, they are nested as sub-components of the parent component |
+| `parentBomRef` | _(auto-detected)_ | Only used when `nested` is `true`. The `bom-ref` of the component to nest external components under. Defaults to the base BOM's `metadata.component.bomRef` |
+
+By default, external SBOM components are added as top-level components alongside the base BOM's components (flat merge). This is appropriate when the external components are peers of the base components (e.g., npm dependencies alongside Maven dependencies in a WAR). Set `nested` to `true` to nest them as sub-components of the parent component instead, which is appropriate when the external SBOM describes contents _inside_ a specific artifact. Dependency entries from external SBOMs are always imported into the merged BOM's dependency section.
+
 ## Comparison with cyclonedx-maven-plugin
 
-The [cyclonedx-maven-plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin) is the official CycloneDX tool for Maven projects. It generates SBOMs by reading the Maven dependency tree. This project takes a different approach — it analyzes the actual contents of an assembly archive. The two tools serve complementary purposes.
+The [cyclonedx-maven-plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin) is the official CycloneDX tool for Maven projects. It generates SBOMs by reading the Maven dependency tree. The assembly handler takes a different approach — it analyzes the actual contents of an assembly archive. The two tools serve complementary purposes.
 
 | | Assembly CycloneDX | cyclonedx-maven-plugin |
 |---|---|---|
@@ -230,17 +279,19 @@ The [cyclonedx-maven-plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin
 
 ### When to use which
 
-**Use this project** when you ship a distribution archive assembled by the Maven Assembly Plugin and need the SBOM to reflect exactly what is inside that archive — including unpacked content, nested JARs, and non-artifact files.
+**Use the assembly handler** when you ship a distribution archive assembled by the Maven Assembly Plugin and need the SBOM to reflect exactly what is inside that archive — including unpacked content, nested JARs, and non-artifact files.
 
 **Use cyclonedx-maven-plugin** when you need a dependency-level SBOM for a Maven module (e.g., a library JAR published to a repository), want aggregate BOMs across a multi-module reactor, or need scope-level control over which dependencies appear in the BOM.
+
+**Use the merge plugin** when your project bundles components from multiple ecosystems (e.g., Maven + npm) and you need a single unified SBOM. Generate ecosystem-specific SBOMs separately, then merge them with the `merge-sbom` goal.
 
 **Use both** when you publish library artifacts with dependency SBOMs _and_ ship distribution archives that need content-accurate SBOMs.
 
 ## Requirements
 
 - Java 17+
-- Maven Assembly Plugin 3.8.0+
 - Maven 3.9+
+- Maven Assembly Plugin 3.8.0+ (for the handler)
 
 ## Example Output
 
@@ -278,4 +329,3 @@ The [cyclonedx-maven-plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin
   ]
 }
 ```
-
