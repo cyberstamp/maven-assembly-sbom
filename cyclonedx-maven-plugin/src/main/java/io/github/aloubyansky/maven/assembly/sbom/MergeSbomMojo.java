@@ -74,7 +74,7 @@ public class MergeSbomMojo extends AbstractMojo {
     private boolean prettyPrint;
 
     /**
-     * When {@code true}, components from the merge BOMs are added as dependencies of
+     * When {@code true}, components from the merge BOMs are added as nested sub-components of
      * a parent component rather than as top-level components. The parent is identified
      * by {@link #parentBomRef} or, if that is not set, by the {@code bom-ref} of the
      * base BOM's metadata component.
