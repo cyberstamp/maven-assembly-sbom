@@ -16,11 +16,15 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Model;
 import org.apache.maven.project.MavenProject;
 import org.cyclonedx.model.Bom;
+import org.cyclonedx.model.Component;
+import org.cyclonedx.model.Dependency;
+import org.cyclonedx.model.Evidence;
 import org.cyclonedx.model.Hash;
+import org.cyclonedx.model.component.evidence.Occurrence;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.collection.CollectRequest;
-import org.eclipse.aether.graph.Dependency;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResult;
 import org.slf4j.Logger;
@@ -51,7 +55,7 @@ public class SbomGenerator {
     private final String embeddedSbomHandling;
 
     private MavenLicenseResolver licenseResolver;
-    private List<Dependency> cachedManagedDeps;
+    private List<org.eclipse.aether.graph.Dependency> cachedManagedDeps;
 
     SbomGenerator(MavenProject project, MavenSession session,
             RepositorySystem repoSystem,
@@ -171,7 +175,7 @@ public class SbomGenerator {
             if ("link".equalsIgnoreCase(embeddedSbomHandling)) {
                 BomMerger.addBomReference(bom, parentRef, detected.archivePath());
             } else {
-                org.cyclonedx.model.Component parent = BomMerger.findComponentByBomRef(
+                Component parent = BomMerger.findComponentByBomRef(
                         bom, parentRef);
                 String parentPrefix = parent != null
                         ? BomMerger.getParentPathPrefix(parent)
@@ -211,15 +215,15 @@ public class SbomGenerator {
         return hashes;
     }
 
-    private static Bom filterSbomByArchive(Bom sbom, Set<String> archivePaths,
+    static Bom filterSbomByArchive(Bom sbom, Set<String> archivePaths,
             Set<String> archiveHashes, String normalizedAlg,
             String parentPathPrefix) {
         if (sbom.getComponents() == null) {
             return sbom;
         }
         Set<String> survivingRefs = new HashSet<>();
-        List<org.cyclonedx.model.Component> filtered = new ArrayList<>();
-        for (org.cyclonedx.model.Component comp : sbom.getComponents()) {
+        List<Component> filtered = new ArrayList<>();
+        for (Component comp : sbom.getComponents()) {
             if (matchesArchive(comp, archivePaths, archiveHashes,
                     normalizedAlg, parentPathPrefix)) {
                 filtered.add(comp);
@@ -232,10 +236,10 @@ public class SbomGenerator {
         Bom result = new Bom();
         result.setComponents(filtered);
         if (sbom.getDependencies() != null) {
-            List<org.cyclonedx.model.Dependency> filteredDeps = new ArrayList<>();
-            for (org.cyclonedx.model.Dependency dep : sbom.getDependencies()) {
+            List<Dependency> filteredDeps = new ArrayList<>();
+            for (Dependency dep : sbom.getDependencies()) {
                 if (survivingRefs.contains(dep.getRef())) {
-                    org.cyclonedx.model.Dependency pruned = filterDependencyChildren(
+                    Dependency pruned = filterDependencyChildren(
                             dep, survivingRefs);
                     filteredDeps.add(pruned);
                 }
@@ -247,28 +251,28 @@ public class SbomGenerator {
         return result;
     }
 
-    private static org.cyclonedx.model.Dependency filterDependencyChildren(
-            org.cyclonedx.model.Dependency dep, Set<String> survivingRefs) {
+    private static Dependency filterDependencyChildren(
+            Dependency dep, Set<String> survivingRefs) {
         if (dep.getDependencies() == null || dep.getDependencies().isEmpty()) {
             return dep;
         }
-        org.cyclonedx.model.Dependency result = new org.cyclonedx.model.Dependency(
+        Dependency result = new Dependency(
                 dep.getRef());
-        for (org.cyclonedx.model.Dependency child : dep.getDependencies()) {
+        for (Dependency child : dep.getDependencies()) {
             if (survivingRefs.contains(child.getRef())) {
-                result.addDependency(new org.cyclonedx.model.Dependency(child.getRef()));
+                result.addDependency(new Dependency(child.getRef()));
             }
         }
         return result;
     }
 
-    private static void collectBomRefs(org.cyclonedx.model.Component comp,
+    private static void collectBomRefs(Component comp,
             Set<String> refs) {
         if (comp.getBomRef() != null) {
             refs.add(comp.getBomRef());
         }
         if (comp.getComponents() != null) {
-            for (org.cyclonedx.model.Component child : comp.getComponents()) {
+            for (Component child : comp.getComponents()) {
                 collectBomRefs(child, refs);
             }
         }
@@ -285,7 +289,7 @@ public class SbomGenerator {
      * <li>It has no hash with a comparable algorithm (can't verify).</li>
      * </ul>
      */
-    private static boolean matchesArchive(org.cyclonedx.model.Component comp,
+    private static boolean matchesArchive(Component comp,
             Set<String> archivePaths, Set<String> archiveHashes,
             String normalizedAlg, String parentPathPrefix) {
         if (hasMatchingOccurrence(comp, archivePaths, parentPathPrefix)) {
@@ -308,12 +312,12 @@ public class SbomGenerator {
                 || !hasVerifiableHash(comp, normalizedAlg);
     }
 
-    private static boolean hasMatchingHash(org.cyclonedx.model.Component comp,
+    private static boolean hasMatchingHash(Component comp,
             Set<String> archiveHashes, String normalizedAlg) {
         if (comp.getHashes() == null) {
             return false;
         }
-        for (org.cyclonedx.model.Hash h : comp.getHashes()) {
+        for (Hash h : comp.getHashes()) {
             if (normalizedAlg.equals(normalizeAlgorithm(h.getAlgorithm()))
                     && archiveHashes.contains(h.getValue())) {
                 return true;
@@ -322,12 +326,12 @@ public class SbomGenerator {
         return false;
     }
 
-    private static boolean hasVerifiableHash(org.cyclonedx.model.Component comp,
+    private static boolean hasVerifiableHash(Component comp,
             String normalizedAlg) {
         if (comp.getHashes() == null) {
             return false;
         }
-        for (org.cyclonedx.model.Hash h : comp.getHashes()) {
+        for (Hash h : comp.getHashes()) {
             if (normalizedAlg.equals(normalizeAlgorithm(h.getAlgorithm()))) {
                 return true;
             }
@@ -335,13 +339,13 @@ public class SbomGenerator {
         return false;
     }
 
-    private static boolean hasMatchingOccurrence(org.cyclonedx.model.Component comp,
+    private static boolean hasMatchingOccurrence(Component comp,
             Set<String> archivePaths, String parentPathPrefix) {
-        org.cyclonedx.model.Evidence evidence = comp.getEvidence();
+        Evidence evidence = comp.getEvidence();
         if (evidence == null || evidence.getOccurrences() == null) {
             return false;
         }
-        for (org.cyclonedx.model.component.evidence.Occurrence occ : evidence.getOccurrences()) {
+        for (Occurrence occ : evidence.getOccurrences()) {
             String location = occ.getLocation();
             if (location == null || location.isEmpty()) {
                 continue;
@@ -356,17 +360,17 @@ public class SbomGenerator {
         return false;
     }
 
-    private static boolean hasEmptyOccurrence(org.cyclonedx.model.Component comp,
+    private static boolean hasEmptyOccurrence(Component comp,
             String parentPathPrefix) {
         if (parentPathPrefix == null
-                || comp.getType() == org.cyclonedx.model.Component.Type.FILE) {
+                || comp.getType() == Component.Type.FILE) {
             return false;
         }
-        org.cyclonedx.model.Evidence evidence = comp.getEvidence();
+        Evidence evidence = comp.getEvidence();
         if (evidence == null || evidence.getOccurrences() == null) {
             return false;
         }
-        for (org.cyclonedx.model.component.evidence.Occurrence occ : evidence.getOccurrences()) {
+        for (Occurrence occ : evidence.getOccurrences()) {
             if ("".equals(occ.getLocation())) {
                 return true;
             }
@@ -374,7 +378,7 @@ public class SbomGenerator {
         return false;
     }
 
-    private static boolean isNpmComponent(org.cyclonedx.model.Component comp) {
+    private static boolean isNpmComponent(Component comp) {
         String purl = comp.getPurl();
         return purl != null && purl.startsWith("pkg:npm/");
     }
@@ -400,8 +404,8 @@ public class SbomGenerator {
         if (bom.getComponents() == null) {
             return;
         }
-        Map<String, List<org.cyclonedx.model.Component>> filesByHash = new HashMap<>();
-        for (org.cyclonedx.model.Component comp : bom.getComponents()) {
+        Map<String, List<Component>> filesByHash = new HashMap<>();
+        for (Component comp : bom.getComponents()) {
             if (comp.getBomRef() != null
                     && comp.getBomRef().startsWith("file:")
                     && comp.getHashes() != null) {
@@ -417,8 +421,8 @@ public class SbomGenerator {
             return;
         }
         Map<String, String> fileToLibRef = new HashMap<>();
-        for (org.cyclonedx.model.Component comp : bom.getComponents()) {
-            if (comp.getType() != org.cyclonedx.model.Component.Type.LIBRARY
+        for (Component comp : bom.getComponents()) {
+            if (comp.getType() != Component.Type.LIBRARY
                     || comp.getHashes() == null) {
                 continue;
             }
@@ -426,9 +430,9 @@ public class SbomGenerator {
                 if (!normalizedAlg.equals(normalizeAlgorithm(h.getAlgorithm()))) {
                     continue;
                 }
-                List<org.cyclonedx.model.Component> fileComps = filesByHash.get(h.getValue());
+                List<Component> fileComps = filesByHash.get(h.getValue());
                 if (fileComps != null) {
-                    for (org.cyclonedx.model.Component fileComp : fileComps) {
+                    for (Component fileComp : fileComps) {
                         fileToLibRef.put(fileComp.getBomRef(), comp.getBomRef());
                     }
                 }
@@ -440,8 +444,8 @@ public class SbomGenerator {
         bom.getComponents().removeIf(
                 c -> fileToLibRef.containsKey(c.getBomRef()));
         if (bom.getDependencies() != null) {
-            List<org.cyclonedx.model.Dependency> toRemove = new ArrayList<>();
-            for (org.cyclonedx.model.Dependency dep : bom.getDependencies()) {
+            List<Dependency> toRemove = new ArrayList<>();
+            for (Dependency dep : bom.getDependencies()) {
                 String replacement = fileToLibRef.get(dep.getRef());
                 if (replacement != null) {
                     toRemove.add(dep);
@@ -454,33 +458,33 @@ public class SbomGenerator {
     }
 
     private static void replaceDependsOnRefs(
-            org.cyclonedx.model.Dependency dep,
+            Dependency dep,
             Map<String, String> refMap) {
         if (dep.getDependencies() == null) {
             return;
         }
-        List<org.cyclonedx.model.Dependency> toAdd = new ArrayList<>();
-        List<org.cyclonedx.model.Dependency> toRemove = new ArrayList<>();
-        for (org.cyclonedx.model.Dependency child : dep.getDependencies()) {
+        List<Dependency> toAdd = new ArrayList<>();
+        List<Dependency> toRemove = new ArrayList<>();
+        for (Dependency child : dep.getDependencies()) {
             String replacement = refMap.get(child.getRef());
             if (replacement != null) {
                 toRemove.add(child);
                 boolean alreadyPresent = dep.getDependencies().stream()
                         .anyMatch(d -> replacement.equals(d.getRef()));
                 if (!alreadyPresent) {
-                    toAdd.add(new org.cyclonedx.model.Dependency(replacement));
+                    toAdd.add(new Dependency(replacement));
                 }
             }
             replaceDependsOnRefs(child, refMap);
         }
         dep.getDependencies().removeAll(toRemove);
-        for (org.cyclonedx.model.Dependency d : toAdd) {
+        for (Dependency d : toAdd) {
             dep.addDependency(d);
         }
     }
 
-    private static void deduplicateBomRefs(Bom bom) {
-        Map<String, org.cyclonedx.model.Component> seen = new HashMap<>();
+    static void deduplicateBomRefs(Bom bom) {
+        Map<String, Component> seen = new HashMap<>();
         Map<String, String> renames = new HashMap<>();
         if (bom.getComponents() != null) {
             deduplicateBomRefs(bom.getComponents(), seen, renames);
@@ -496,16 +500,16 @@ public class SbomGenerator {
                 originalToNew.computeIfAbsent(e.getValue(),
                         k -> new ArrayList<>()).add(e.getKey());
             }
-            List<org.cyclonedx.model.Dependency> toAdd = new ArrayList<>();
-            for (org.cyclonedx.model.Dependency dep : bom.getDependencies()) {
+            List<Dependency> toAdd = new ArrayList<>();
+            for (Dependency dep : bom.getDependencies()) {
                 List<String> newRefs = originalToNew.get(dep.getRef());
                 if (newRefs != null) {
                     for (String newRef : newRefs) {
-                        org.cyclonedx.model.Dependency clone = new org.cyclonedx.model.Dependency(newRef);
+                        Dependency clone = new Dependency(newRef);
                         if (dep.getDependencies() != null) {
-                            for (org.cyclonedx.model.Dependency child : dep.getDependencies()) {
+                            for (Dependency child : dep.getDependencies()) {
                                 clone.addDependency(
-                                        new org.cyclonedx.model.Dependency(
+                                        new Dependency(
                                                 child.getRef()));
                             }
                         }
@@ -518,10 +522,10 @@ public class SbomGenerator {
     }
 
     private static void deduplicateBomRefs(
-            List<org.cyclonedx.model.Component> components,
-            Map<String, org.cyclonedx.model.Component> seen,
+            List<Component> components,
+            Map<String, Component> seen,
             Map<String, String> renames) {
-        for (org.cyclonedx.model.Component comp : components) {
+        for (Component comp : components) {
             String ref = comp.getBomRef();
             if (ref != null && seen.putIfAbsent(ref, comp) != null) {
                 int suffix = 2;
@@ -605,7 +609,7 @@ public class SbomGenerator {
 
     private void resolveToolHash(BomBuilder builder) {
         try {
-            org.eclipse.aether.artifact.DefaultArtifact toolArtifact = new org.eclipse.aether.artifact.DefaultArtifact(
+            DefaultArtifact toolArtifact = new DefaultArtifact(
                     ToolInfo.GROUP_ID, ToolInfo.ARTIFACT_ID, "jar", ToolInfo.VERSION);
             ArtifactRequest request = new ArtifactRequest(
                     toolArtifact, project.getRemoteProjectRepositories(), null);
@@ -634,20 +638,20 @@ public class SbomGenerator {
     }
 
     private Map<ArtifactCoords, Set<ArtifactCoords>> collectDependencyEdges(
-            Map<ArtifactCoords, List<Dependency>> nestedDepsByParent) throws Exception {
+            Map<ArtifactCoords, List<org.eclipse.aether.graph.Dependency>> nestedDepsByParent) throws Exception {
         Map<ArtifactCoords, Set<ArtifactCoords>> collectedEdges = new ConcurrentHashMap<>();
 
         DefaultRepositorySystemSession mutableSession = new DefaultRepositorySystemSession(session.getRepositorySession());
         mutableSession.setDependencySelector(new EdgeCollectorSelectorFactory(
                 session.getRepositorySession().getDependencySelector(), collectedEdges));
 
-        List<Dependency> projectManagedDeps = collectManagedDependencies();
+        List<org.eclipse.aether.graph.Dependency> projectManagedDeps = collectManagedDependencies();
         CollectRequest request = buildCollectRequest(
                 toAetherDependencies(project.getDependencies()), projectManagedDeps);
         repoSystem.collectDependencies(mutableSession, request);
 
-        for (Map.Entry<ArtifactCoords, List<Dependency>> entry : nestedDepsByParent.entrySet()) {
-            List<Dependency> parentManagedDeps = resolveManagedDependencies(entry.getKey());
+        for (Map.Entry<ArtifactCoords, List<org.eclipse.aether.graph.Dependency>> entry : nestedDepsByParent.entrySet()) {
+            List<org.eclipse.aether.graph.Dependency> parentManagedDeps = resolveManagedDependencies(entry.getKey());
             CollectRequest nestedRequest = buildCollectRequest(entry.getValue(), parentManagedDeps);
             repoSystem.collectDependencies(mutableSession, nestedRequest);
         }
@@ -655,7 +659,7 @@ public class SbomGenerator {
         return collectedEdges;
     }
 
-    private List<Dependency> resolveManagedDependencies(ArtifactCoords coords) {
+    private List<org.eclipse.aether.graph.Dependency> resolveManagedDependencies(ArtifactCoords coords) {
         Model model = effectiveModelResolver.resolveEffectiveModel(
                 coords.groupId(), coords.artifactId(), coords.version());
         if (model == null || model.getDependencyManagement() == null
@@ -665,11 +669,11 @@ public class SbomGenerator {
         return toAetherDependencies(model.getDependencyManagement().getDependencies());
     }
 
-    private List<Dependency> collectManagedDependencies() {
+    private List<org.eclipse.aether.graph.Dependency> collectManagedDependencies() {
         if (cachedManagedDeps != null) {
             return cachedManagedDeps;
         }
-        List<Dependency> managedDeps;
+        List<org.eclipse.aether.graph.Dependency> managedDeps;
         if (project.getDependencyManagement() != null
                 && project.getDependencyManagement().getDependencies() != null) {
             managedDeps = toAetherDependencies(
@@ -681,24 +685,24 @@ public class SbomGenerator {
         return managedDeps;
     }
 
-    private List<Dependency> toAetherDependencies(
+    private List<org.eclipse.aether.graph.Dependency> toAetherDependencies(
             List<org.apache.maven.model.Dependency> deps) {
-        List<Dependency> result = new ArrayList<>(deps.size());
+        List<org.eclipse.aether.graph.Dependency> result = new ArrayList<>(deps.size());
         for (org.apache.maven.model.Dependency dep : deps) {
             result.add(toAetherDependency(dep));
         }
         return result;
     }
 
-    private static Dependency toAetherDependency(org.apache.maven.model.Dependency dep) {
-        return new Dependency(
+    private static org.eclipse.aether.graph.Dependency toAetherDependency(org.apache.maven.model.Dependency dep) {
+        return new org.eclipse.aether.graph.Dependency(
                 SbomUtils.toAetherArtifact(dep.getGroupId(), dep.getArtifactId(),
                         dep.getVersion(), dep.getType(), dep.getClassifier()),
                 dep.getScope());
     }
 
-    private CollectRequest buildCollectRequest(List<Dependency> deps,
-            List<Dependency> managedDeps) {
+    private CollectRequest buildCollectRequest(List<org.eclipse.aether.graph.Dependency> deps,
+            List<org.eclipse.aether.graph.Dependency> managedDeps) {
         CollectRequest request = new CollectRequest();
         request.setDependencies(deps);
         request.setManagedDependencies(managedDeps);
