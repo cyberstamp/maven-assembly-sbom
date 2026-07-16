@@ -422,21 +422,7 @@ public class SbomGenerator {
         }
         Map<String, String> fileToLibRef = new HashMap<>();
         for (Component comp : bom.getComponents()) {
-            if (comp.getType() != Component.Type.LIBRARY
-                    || comp.getHashes() == null) {
-                continue;
-            }
-            for (Hash h : comp.getHashes()) {
-                if (!normalizedAlg.equals(normalizeAlgorithm(h.getAlgorithm()))) {
-                    continue;
-                }
-                List<Component> fileComps = filesByHash.get(h.getValue());
-                if (fileComps != null) {
-                    for (Component fileComp : fileComps) {
-                        fileToLibRef.put(fileComp.getBomRef(), comp.getBomRef());
-                    }
-                }
-            }
+            matchFilesByLibraryHash(comp, filesByHash, normalizedAlg, fileToLibRef);
         }
         if (fileToLibRef.isEmpty()) {
             return;
@@ -454,6 +440,30 @@ public class SbomGenerator {
                 }
             }
             bom.getDependencies().removeAll(toRemove);
+        }
+    }
+
+    private static void matchFilesByLibraryHash(Component comp,
+            Map<String, List<Component>> filesByHash,
+            String normalizedAlg, Map<String, String> fileToLibRef) {
+        if (comp.getType() == Component.Type.LIBRARY && comp.getHashes() != null) {
+            for (Hash h : comp.getHashes()) {
+                if (!normalizedAlg.equals(normalizeAlgorithm(h.getAlgorithm()))) {
+                    continue;
+                }
+                List<Component> fileComps = filesByHash.get(h.getValue());
+                if (fileComps != null) {
+                    for (Component fileComp : fileComps) {
+                        fileToLibRef.put(fileComp.getBomRef(), comp.getBomRef());
+                    }
+                }
+            }
+        }
+        if (comp.getComponents() != null) {
+            for (Component nested : comp.getComponents()) {
+                matchFilesByLibraryHash(nested, filesByHash,
+                        normalizedAlg, fileToLibRef);
+            }
         }
     }
 
@@ -537,6 +547,8 @@ public class SbomGenerator {
                 comp.setBomRef(unique);
                 seen.put(unique, comp);
             }
+        }
+        for (Component comp : components) {
             if (comp.getComponents() != null) {
                 deduplicateBomRefs(comp.getComponents(), seen, renames);
             }

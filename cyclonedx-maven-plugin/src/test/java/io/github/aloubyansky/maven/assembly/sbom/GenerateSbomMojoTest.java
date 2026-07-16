@@ -23,6 +23,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
 import org.cyclonedx.model.Bom;
 import org.cyclonedx.model.Component;
+import org.cyclonedx.model.ExternalReference;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.collection.DependencySelector;
@@ -208,6 +209,128 @@ class GenerateSbomMojoTest {
         assertTrue(output.exists());
         Bom bom = BomReader.readBom(output);
         assertNotNull(bom);
+    }
+
+    @Test
+    void embeddedSbomHandlingIgnoreSkipsDetection() throws Exception {
+        Path jarFile = createJarWithEmbeddedSbom("WEB-INF/lib/plugin-1.0.jar",
+                "plugin-data", "org.plugin", "plugin-lib", "1.0");
+        Artifact artifact = createArtifact("org.example", "plugin", "1.0",
+                "jar", jarFile.toFile());
+        when(project.getArtifacts()).thenReturn(Set.of(artifact));
+
+        File output = tempDir.resolve("output-ignore.cdx.json").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        setField(mojo, "embeddedSbomHandling", "ignore");
+        mojo.execute();
+
+        Bom bom = BomReader.readBom(output);
+        assertNotNull(bom);
+        Component plugin = bom.getComponents().stream()
+                .filter(c -> "plugin".equals(c.getName()) && c.getType() == Component.Type.LIBRARY)
+                .findFirst().orElse(null);
+        assertNotNull(plugin, "JAR should still be detected as LIBRARY");
+        assertTrue(plugin.getComponents() == null || plugin.getComponents().isEmpty(),
+                "embedded SBOM components should NOT be merged when handling=ignore");
+    }
+
+    @Test
+    void detectEmbeddedSbomsFromJarInDirectory() throws Exception {
+        Path jarFile = createJarWithEmbeddedSbom("WEB-INF/lib/plugin-1.0.jar",
+                "plugin-data", "org.plugin", "plugin-lib", "1.0");
+        Artifact artifact = createArtifact("org.example", "plugin", "1.0",
+                "jar", jarFile.toFile());
+        when(project.getArtifacts()).thenReturn(Set.of(artifact));
+
+        File output = tempDir.resolve("output-merge.cdx.json").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        mojo.execute();
+
+        Bom bom = BomReader.readBom(output);
+        assertNotNull(bom);
+        Component plugin = bom.getComponents().stream()
+                .filter(c -> "plugin".equals(c.getName()) && c.getType() == Component.Type.LIBRARY)
+                .findFirst().orElse(null);
+        assertNotNull(plugin, "JAR should be detected as LIBRARY");
+        assertNotNull(plugin.getComponents(),
+                "embedded SBOM components should be merged under JAR");
+        assertTrue(plugin.getComponents().stream()
+                .anyMatch(c -> "plugin-lib".equals(c.getName())),
+                "embedded SBOM library should appear as nested component");
+    }
+
+    @Test
+    void embeddedSbomHandlingLinkAddsReference() throws Exception {
+        Path jarFile = createJarWithEmbeddedSbom("WEB-INF/lib/plugin-1.0.jar",
+                "plugin-data", "org.plugin", "plugin-lib", "1.0");
+        Artifact artifact = createArtifact("org.example", "plugin", "1.0",
+                "jar", jarFile.toFile());
+        when(project.getArtifacts()).thenReturn(Set.of(artifact));
+
+        File output = tempDir.resolve("output-link.cdx.json").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        setField(mojo, "embeddedSbomHandling", "link");
+        mojo.execute();
+
+        Bom bom = BomReader.readBom(output);
+        assertNotNull(bom);
+        Component plugin = bom.getComponents().stream()
+                .filter(c -> "plugin".equals(c.getName()) && c.getType() == Component.Type.LIBRARY)
+                .findFirst().orElse(null);
+        assertNotNull(plugin, "JAR should be detected as LIBRARY");
+        assertTrue(plugin.getComponents() == null || plugin.getComponents().isEmpty(),
+                "embedded SBOM components should NOT be merged in link mode");
+        assertNotNull(plugin.getExternalReferences(),
+                "link mode should add external BOM reference");
+        assertTrue(plugin.getExternalReferences().stream()
+                .anyMatch(r -> r.getType() == org.cyclonedx.model.ExternalReference.Type.BOM),
+                "external reference should be of type BOM");
+    }
+
+    @Test
+    void dependencyGraphFailureDoesNotPreventBomGeneration() throws Exception {
+        Files.writeString(inputDir.resolve("data.txt"), "hello");
+        when(project.getArtifacts()).thenReturn(Set.of());
+        when(repoSystem.collectDependencies(any(), any()))
+                .thenThrow(new RuntimeException("simulated collection failure"));
+
+        File output = tempDir.resolve("output-depfail.cdx.json").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        mojo.execute();
+
+        assertTrue(output.exists(), "BOM should still be generated despite dependency graph failure");
+        Bom bom = BomReader.readBom(output);
+        assertNotNull(bom);
+        assertNotNull(bom.getMetadata());
+        assertEquals("test-app", bom.getMetadata().getComponent().getName());
+    }
+
+    private Path createJarWithEmbeddedSbom(String relativePath, String content,
+            String sbomGroup, String sbomName, String sbomVersion) throws Exception {
+        Bom embeddedBom = new Bom();
+        Component comp = new Component();
+        comp.setType(Component.Type.LIBRARY);
+        comp.setGroup(sbomGroup);
+        comp.setName(sbomName);
+        comp.setVersion(sbomVersion);
+        comp.setBomRef("pkg:maven/" + sbomGroup + "/" + sbomName + "@" + sbomVersion);
+        embeddedBom.addComponent(comp);
+
+        Path bomJson = tempDir.resolve("tmp-embedded.cdx.json");
+        BomWriter.writeJson(embeddedBom, bomJson, false);
+        byte[] bomBytes = java.nio.file.Files.readAllBytes(bomJson);
+
+        Path jarPath = inputDir.resolve(relativePath);
+        java.nio.file.Files.createDirectories(jarPath.getParent());
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(jarPath))) {
+            jos.putNextEntry(new JarEntry("data.txt"));
+            jos.write(content.getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("META-INF/sbom/bom.cdx.json"));
+            jos.write(bomBytes);
+            jos.closeEntry();
+        }
+        return jarPath;
     }
 
     private Path createTestJar(String relativePath, String content) throws Exception {

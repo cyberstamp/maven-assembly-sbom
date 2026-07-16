@@ -337,6 +337,28 @@ class SbomGeneratorTest {
     }
 
     @Test
+    void deduplicateTopLevelKeepsCleanRefOverNested() {
+        Bom bom = new Bom();
+        Component parentA = createLibrary("a-parent", "ref-parent-a");
+        Component nestedDup = createLibrary("dup-nested", "ref-dup");
+        parentA.setComponents(new ArrayList<>(List.of(nestedDup)));
+
+        Component topDup = createLibrary("dup-top", "ref-dup");
+        // parentA sorts before topDup alphabetically
+        bom.setComponents(new ArrayList<>(List.of(parentA, topDup)));
+
+        Dependency dep = new Dependency("ref-dup");
+        bom.addDependency(dep);
+
+        SbomGenerator.deduplicateBomRefs(bom);
+
+        assertEquals("ref-dup", topDup.getBomRef(),
+                "top-level component should keep the clean bom-ref");
+        assertEquals("ref-dup#2", nestedDup.getBomRef(),
+                "nested component should get the #2 suffix");
+    }
+
+    @Test
     void deduplicateNoComponentsIsNoop() {
         Bom bom = new Bom();
         SbomGenerator.deduplicateBomRefs(bom);
@@ -440,6 +462,86 @@ class SbomGeneratorTest {
 
         assertEquals(2, bom.getComponents().size(),
                 "file component with different hash algorithm should not be replaced");
+    }
+
+    @Test
+    void replaceFileComponentMatchesNestedLibraryByHash() {
+        String hash = "aabbccdd11223344";
+        Bom bom = new Bom();
+
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("caffeine-3.2.3.jar");
+        fileComp.setBomRef("file:WEB-INF/lib/caffeine-3.2.3.jar");
+        fileComp.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+
+        Component parentComp = createLibrary("parent-war", "pkg:maven/g/parent@1.0");
+        Component nestedLib = createLibrary("caffeine", "pkg:maven/g/caffeine@3.2.3");
+        nestedLib.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+        parentComp.setComponents(new ArrayList<>(List.of(nestedLib)));
+
+        bom.setComponents(new ArrayList<>(List.of(fileComp, parentComp)));
+
+        Dependency rootDep = new Dependency("root");
+        rootDep.addDependency(new Dependency("file:WEB-INF/lib/caffeine-3.2.3.jar"));
+        bom.addDependency(rootDep);
+        bom.addDependency(new Dependency("file:WEB-INF/lib/caffeine-3.2.3.jar"));
+
+        SbomGenerator.replaceFileComponentsWithLibraries(bom, "sha256");
+
+        assertEquals(1, bom.getComponents().size(),
+                "file component should be removed when matching nested library hash");
+        assertEquals("parent-war", bom.getComponents().get(0).getName());
+
+        Dependency root = bom.getDependencies().stream()
+                .filter(d -> "root".equals(d.getRef()))
+                .findFirst().orElse(null);
+        assertNotNull(root);
+        assertTrue(root.getDependencies().stream()
+                .anyMatch(d -> "pkg:maven/g/caffeine@3.2.3".equals(d.getRef())),
+                "dependsOn should be updated to use nested library ref");
+    }
+
+    @Test
+    void replaceFileComponentMatchesDeeplyNestedLibraryByHash() {
+        String hash = "deep1122334455";
+        Bom bom = new Bom();
+
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("deep-lib-1.0.jar");
+        fileComp.setBomRef("file:WEB-INF/lib/deep-lib-1.0.jar");
+        fileComp.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+
+        Component grandchild = createLibrary("deep-lib", "pkg:maven/g/deep-lib@1.0");
+        grandchild.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+
+        Component child = createLibrary("inner-war", "pkg:maven/g/inner-war@1.0");
+        child.setComponents(new ArrayList<>(List.of(grandchild)));
+
+        Component parent = createLibrary("outer-war", "pkg:maven/g/outer-war@1.0");
+        parent.setComponents(new ArrayList<>(List.of(child)));
+
+        bom.setComponents(new ArrayList<>(List.of(fileComp, parent)));
+
+        Dependency rootDep = new Dependency("root");
+        rootDep.addDependency(new Dependency("file:WEB-INF/lib/deep-lib-1.0.jar"));
+        bom.addDependency(rootDep);
+        bom.addDependency(new Dependency("file:WEB-INF/lib/deep-lib-1.0.jar"));
+
+        SbomGenerator.replaceFileComponentsWithLibraries(bom, "sha256");
+
+        assertEquals(1, bom.getComponents().size(),
+                "file component should be removed when matching deeply nested library hash");
+        assertEquals("outer-war", bom.getComponents().get(0).getName());
+
+        Dependency root = bom.getDependencies().stream()
+                .filter(d -> "root".equals(d.getRef()))
+                .findFirst().orElse(null);
+        assertNotNull(root);
+        assertTrue(root.getDependencies().stream()
+                .anyMatch(d -> "pkg:maven/g/deep-lib@1.0".equals(d.getRef())),
+                "dependsOn should be updated to use deeply nested library ref");
     }
 
     // ── parseExternalBoms ───────────────────────────────────────────────

@@ -1473,6 +1473,120 @@ class SbomContainerDescriptorHandlerTest {
                 "dependency entry ref should match prefixed bom-ref");
     }
 
+    @Test
+    void embeddedSbomFromArtifactJarDetectedAndMergedUnderParent() throws Exception {
+        handler.setOutput("external");
+
+        Path innerJar = createJarWithEmbeddedSbom("console-1.0.jar",
+                "console-content", "org.frontend", "react-app", "1.0");
+        Artifact consoleArtifact = createArtifact("org.example", "console", "1.0",
+                "jar", innerJar.toFile());
+        when(project.getArtifacts()).thenReturn(Set.of(consoleArtifact));
+
+        Path archivePath = tempDir.resolve("dist-embedded.zip");
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(archivePath.toFile());
+        archiver.addFile(innerJar.toFile(), "base/lib/console-1.0.jar");
+        handler.finalizeArchiveCreation(archiver);
+        archiver.createArchive();
+
+        Path bomFile = tempDir.resolve("dist-embedded.zip.cdx.json");
+        assertTrue(Files.exists(bomFile));
+        Bom bom = BomReader.readBom(bomFile.toFile());
+        assertNotNull(bom);
+
+        Component console = findComponent(bom, Component.Type.LIBRARY, "console");
+        assertNotNull(console, "JAR should be detected as LIBRARY component");
+        assertNotNull(console.getComponents(),
+                "embedded SBOM components should be nested under parent JAR");
+        assertTrue(console.getComponents().stream()
+                .anyMatch(c -> "react-app".equals(c.getName())),
+                "embedded SBOM library should appear as nested component");
+
+        assertNull(findComponent(bom, Component.Type.FILE, "bom.cdx.json"),
+                "SBOM file itself should NOT appear as FILE component");
+    }
+
+    @Test
+    void multiLevelEmbeddedSbomNesting() throws Exception {
+        // Tests 2-level nesting via unpacked WAR:
+        // distribution → console (unpacked WAR) → inner-war → lodash (npm)
+        handler.setOutput("external");
+
+        Path nestedJar = createTestJar("hawtio-1.0.jar", "hawtio-content");
+
+        Bom embeddedBom = new Bom();
+
+        Component upstreamWar = new Component();
+        upstreamWar.setType(Component.Type.LIBRARY);
+        upstreamWar.setGroup("org.upstream");
+        upstreamWar.setName("inner-war");
+        upstreamWar.setVersion("1.0");
+        upstreamWar.setPurl("pkg:maven/org.upstream/inner-war@1.0?type=war");
+        upstreamWar.setBomRef("pkg:maven/org.upstream/inner-war@1.0?type=war");
+        org.cyclonedx.model.Evidence warEvidence = new org.cyclonedx.model.Evidence();
+        org.cyclonedx.model.component.evidence.Occurrence warOcc = new org.cyclonedx.model.component.evidence.Occurrence();
+        warOcc.setLocation("");
+        warEvidence.addOccurrence(warOcc);
+        upstreamWar.setEvidence(warEvidence);
+
+        Component npmComp = new Component();
+        npmComp.setType(Component.Type.LIBRARY);
+        npmComp.setName("lodash");
+        npmComp.setVersion("4.17.21");
+        npmComp.setPurl("pkg:npm/lodash@4.17.21");
+        npmComp.setBomRef("pkg:npm/lodash@4.17.21");
+        upstreamWar.addComponent(npmComp);
+
+        embeddedBom.addComponent(upstreamWar);
+
+        Path bomJson = tempDir.resolve("multi-level-embedded.cdx.json");
+        BomWriter.writeJson(embeddedBom, bomJson, false);
+        byte[] bomBytes = Files.readAllBytes(bomJson);
+
+        Path warFile = tempDir.resolve("console-1.0.war");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(warFile))) {
+            jos.putNextEntry(new JarEntry("WEB-INF/lib/hawtio-1.0.jar"));
+            jos.write(Files.readAllBytes(nestedJar));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("META-INF/sbom/bom.cdx.json"));
+            jos.write(bomBytes);
+            jos.closeEntry();
+        }
+
+        Artifact warArtifact = createArtifact("org.example", "console", "1.0",
+                "war", warFile.toFile());
+        when(project.getArtifacts()).thenReturn(Set.of(warArtifact));
+
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(tempDir.resolve("dist-multilevel.zip").toFile());
+        archiver.addFile(nestedJar.toFile(),
+                "base/web/console.war/WEB-INF/lib/hawtio-1.0.jar");
+        handler.finalizeArchiveCreation(archiver);
+        archiver.createArchive();
+
+        Path bomFile = tempDir.resolve("dist-multilevel.zip.cdx.json");
+        assertTrue(Files.exists(bomFile));
+        Bom bom = BomReader.readBom(bomFile.toFile());
+        assertNotNull(bom);
+
+        Component console = findComponent(bom, Component.Type.LIBRARY, "console");
+        assertNotNull(console, "unpacked WAR should be detected as LIBRARY component");
+        assertNotNull(console.getComponents(),
+                "embedded SBOM components should be nested under WAR");
+
+        Component innerWarComp = console.getComponents().stream()
+                .filter(c -> "inner-war".equals(c.getName()))
+                .findFirst().orElse(null);
+        assertNotNull(innerWarComp, "inner-war should be nested under console");
+
+        assertNotNull(innerWarComp.getComponents(),
+                "inner-war should have its own nested components");
+        assertTrue(innerWarComp.getComponents().stream()
+                .anyMatch(c -> "lodash".equals(c.getName())),
+                "lodash should be nested under inner-war (2-level nesting)");
+    }
+
     private Path createJarWithEmbeddedSbom(String jarName, String content,
             String sbomGroup, String sbomName, String sbomVersion) throws Exception {
         Bom embeddedBom = new Bom();

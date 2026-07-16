@@ -12,6 +12,7 @@ import org.cyclonedx.model.ExternalReference;
 import org.cyclonedx.model.Hash;
 import org.cyclonedx.model.LicenseChoice;
 import org.cyclonedx.model.Metadata;
+import org.cyclonedx.model.component.evidence.Identity;
 import org.cyclonedx.model.component.evidence.Occurrence;
 import org.junit.jupiter.api.Test;
 
@@ -405,6 +406,41 @@ class BomMergerTest {
     }
 
     @Test
+    void mergeMigratesIdentityEvidenceFromTopLevelToNested() {
+        Component topLib = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0");
+        Evidence evidence = evidenceWithOccurrence("WEB-INF/lib/jspecify-1.0.0.jar");
+        Identity identity = new Identity();
+        identity.setField(Identity.Field.PURL);
+        identity.setConfidence(1.0);
+        evidence.setIdentities(new java.util.ArrayList<>(List.of(identity)));
+        topLib.setEvidence(evidence);
+
+        Component war = createLibrary("org.a", "war", "1.0",
+                "pkg:maven/org.a/war@1.0?type=war");
+
+        Bom target = buildTargetBom("pkg:maven/com.example/app@1.0",
+                war, topLib);
+
+        Component sourceLib = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0?type=jar");
+        Bom source = buildSourceBom(sourceLib);
+
+        BomMerger.mergeUnder(target, "pkg:maven/org.a/war@1.0?type=war", source);
+
+        Component nested = war.getComponents().get(0);
+        assertNotNull(nested.getEvidence());
+        assertNotNull(nested.getEvidence().getOccurrences());
+        assertEquals("WEB-INF/lib/jspecify-1.0.0.jar",
+                nested.getEvidence().getOccurrences().get(0).getLocation());
+        assertNotNull(nested.getEvidence().getIdentities(),
+                "identity evidence should be migrated from top-level");
+        assertEquals(1, nested.getEvidence().getIdentities().size());
+        assertEquals(Identity.Field.PURL,
+                nested.getEvidence().getIdentities().get(0).getField());
+    }
+
+    @Test
     void mergeDeduplicateCarriesOverLicensesFromSbom() {
         Component nested = createLibrary("org.x", "lib", "1.0",
                 "pkg:maven/org.x/lib@1.0");
@@ -432,6 +468,128 @@ class BomMergerTest {
         assertEquals(1, war.getComponents().size());
         assertNotNull(war.getComponents().get(0).getLicenses(),
                 "licenses from SBOM should be applied to existing nested component");
+    }
+
+    @Test
+    void mergeDeduplicatePreservesExistingEvidence() {
+        Component nested = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0");
+        Evidence evidence = evidenceWithOccurrence("WEB-INF/lib/jspecify-1.0.0.jar");
+        Identity identity = new Identity();
+        identity.setField(Identity.Field.PURL);
+        identity.setConfidence(1.0);
+        evidence.setIdentities(new java.util.ArrayList<>(List.of(identity)));
+        nested.setEvidence(evidence);
+
+        Component war = createLibrary("org.a", "war", "1.0", "pkg:maven/org.a/war@1.0");
+        war.addComponent(nested);
+
+        Bom target = buildTargetBom("pkg:maven/com.example/app@1.0", war);
+
+        Component fromSbom = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0?type=jar");
+        Bom source = buildSourceBom(fromSbom);
+
+        BomMerger.mergeUnder(target, "pkg:maven/org.a/war@1.0", source);
+
+        assertEquals(1, war.getComponents().size());
+        Component result = war.getComponents().get(0);
+        assertNotNull(result.getEvidence(),
+                "evidence should be preserved when merging duplicate");
+        assertNotNull(result.getEvidence().getOccurrences(),
+                "occurrences should survive dedup merge");
+        assertEquals("WEB-INF/lib/jspecify-1.0.0.jar",
+                result.getEvidence().getOccurrences().get(0).getLocation());
+        assertNotNull(result.getEvidence().getIdentities(),
+                "identities should survive dedup merge");
+    }
+
+    @Test
+    void mergeDeduplicateDoesNotOverwriteExistingOccurrences() {
+        Component nested = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0");
+        nested.setEvidence(evidenceWithOccurrence("WEB-INF/lib/jspecify-1.0.0.jar"));
+
+        Component war = createLibrary("org.a", "war", "1.0", "pkg:maven/org.a/war@1.0");
+        war.addComponent(nested);
+
+        Bom target = buildTargetBom("pkg:maven/com.example/app@1.0", war);
+
+        Component fromSbom = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0?type=jar");
+        fromSbom.setEvidence(evidenceWithOccurrence("lib/jspecify-1.0.0.jar"));
+
+        Bom source = buildSourceBom(fromSbom);
+
+        BomMerger.mergeUnder(target, "pkg:maven/org.a/war@1.0", source);
+
+        Component result = war.getComponents().get(0);
+        assertEquals(1, result.getEvidence().getOccurrences().size(),
+                "existing occurrences should not be overwritten by source");
+        assertEquals("WEB-INF/lib/jspecify-1.0.0.jar",
+                result.getEvidence().getOccurrences().get(0).getLocation());
+    }
+
+    @Test
+    void mergeDeduplicateDoesNotOverwriteExistingIdentities() {
+        Component nested = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0");
+        Evidence evidence = new Evidence();
+        Identity existingIdentity = new Identity();
+        existingIdentity.setField(Identity.Field.PURL);
+        existingIdentity.setConfidence(1.0);
+        evidence.setIdentities(new java.util.ArrayList<>(List.of(existingIdentity)));
+        nested.setEvidence(evidence);
+
+        Component war = createLibrary("org.a", "war", "1.0", "pkg:maven/org.a/war@1.0");
+        war.addComponent(nested);
+
+        Bom target = buildTargetBom("pkg:maven/com.example/app@1.0", war);
+
+        Component fromSbom = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0?type=jar");
+        Evidence sourceEvidence = new Evidence();
+        Identity sourceIdentity = new Identity();
+        sourceIdentity.setField(Identity.Field.CPE);
+        sourceIdentity.setConfidence(0.5);
+        sourceEvidence.setIdentities(new java.util.ArrayList<>(List.of(sourceIdentity)));
+        fromSbom.setEvidence(sourceEvidence);
+
+        Bom source = buildSourceBom(fromSbom);
+
+        BomMerger.mergeUnder(target, "pkg:maven/org.a/war@1.0", source);
+
+        Component result = war.getComponents().get(0);
+        assertEquals(1, result.getEvidence().getIdentities().size(),
+                "existing identities should not be overwritten by source");
+        assertEquals(Identity.Field.PURL,
+                result.getEvidence().getIdentities().get(0).getField());
+    }
+
+    @Test
+    void mergeDeduplicateNullSourceEvidencePreservesTarget() {
+        Component nested = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0");
+        nested.setEvidence(evidenceWithOccurrence("WEB-INF/lib/jspecify-1.0.0.jar"));
+
+        Component war = createLibrary("org.a", "war", "1.0", "pkg:maven/org.a/war@1.0");
+        war.addComponent(nested);
+
+        Bom target = buildTargetBom("pkg:maven/com.example/app@1.0", war);
+
+        Component fromSbom = createLibrary("org.jspecify", "jspecify", "1.0.0",
+                "pkg:maven/org.jspecify/jspecify@1.0.0?type=jar");
+        // source has null evidence (default)
+
+        Bom source = buildSourceBom(fromSbom);
+
+        BomMerger.mergeUnder(target, "pkg:maven/org.a/war@1.0", source);
+
+        Component result = war.getComponents().get(0);
+        assertNotNull(result.getEvidence(),
+                "target evidence should be preserved when source has null evidence");
+        assertEquals("WEB-INF/lib/jspecify-1.0.0.jar",
+                result.getEvidence().getOccurrences().get(0).getLocation());
     }
 
     @Test

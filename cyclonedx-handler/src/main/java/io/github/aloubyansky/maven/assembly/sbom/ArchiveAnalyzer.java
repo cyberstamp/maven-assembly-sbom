@@ -204,10 +204,9 @@ class ArchiveAnalyzer {
             matchAgainstExternalSboms(unmatchedByPath, content);
         }
         if (detectEmbeddedSboms) {
-            if (!unmatchedByPath.isEmpty()) {
-                detectSbomsInUnmatchedFiles(unmatchedByPath, content);
-            }
-            detectSbomsInArtifactJars(content);
+            Set<String> detectedSbomPaths = new HashSet<>();
+            detectSbomsInArtifactJars(content, detectedSbomPaths);
+            detectedSbomPaths.forEach(unmatchedByPath::remove);
         }
 
         for (ArchiveContent.FileEntry entry : unmatchedByPath.values()) {
@@ -986,90 +985,6 @@ class ArchiveAnalyzer {
         return null;
     }
 
-    // ---- Embedded SBOM detection ----
-
-    /**
-     * Detects CycloneDX SBOM files among unmatched archive entries.
-     *
-     * <p>
-     * Detected SBOMs are parsed and recorded in the content. The parent
-     * artifact is determined by finding the Maven entry whose archive
-     * path is the longest prefix of the SBOM path (e.g., an SBOM at
-     * {@code web/console.war/bom.cdx.json} is associated with an
-     * artifact unpacked to {@code web/console.war/}).
-     * </p>
-     *
-     * <p>
-     * When both JSON and XML variants of the same SBOM exist (same
-     * directory and filename stem), the JSON variant is preferred and
-     * the XML duplicate is skipped.
-     * </p>
-     */
-    private static void detectSbomsInUnmatchedFiles(
-            Map<String, ArchiveContent.FileEntry> unmatchedByPath,
-            ArchiveContent content) {
-        Set<String> processedStems = new HashSet<>();
-        List<String> toRemove = new ArrayList<>();
-
-        List<String> sbomPaths = new ArrayList<>();
-        for (String path : unmatchedByPath.keySet()) {
-            if (BomReader.isSbomFile(path)) {
-                sbomPaths.add(path);
-            }
-        }
-        sbomPaths.sort(JSON_FIRST_SBOM_ORDER);
-
-        for (String path : sbomPaths) {
-            String stem = BomReader.sbomStem(path);
-            if (!processedStems.add(stem)) {
-                toRemove.add(path);
-                continue;
-            }
-            ArchiveContent.FileEntry entry = unmatchedByPath.get(path);
-            if (entry == null || entry.sourceFile() == null) {
-                continue;
-            }
-            Bom parsedBom = BomReader.readBom(entry.sourceFile());
-            if (parsedBom == null) {
-                continue;
-            }
-            ArtifactCoords parent = findParentArtifact(path, content);
-            content.addDetectedSbom(new ArchiveContent.DetectedSbom(
-                    path, parsedBom, parent));
-            toRemove.add(path);
-        }
-
-        for (String path : toRemove) {
-            unmatchedByPath.remove(path);
-        }
-    }
-
-    /**
-     * Finds the Maven artifact whose archive path is the longest prefix
-     * of the given SBOM path, indicating that the SBOM was unpacked
-     * from that artifact.
-     *
-     * @return the parent artifact coordinates, or {@code null} if no
-     *         prefix match is found
-     */
-    private static ArtifactCoords findParentArtifact(String sbomPath,
-            ArchiveContent content) {
-        ArtifactCoords bestMatch = null;
-        int bestLength = 0;
-        for (ArchiveContent.MavenEntry entry : content.mavenEntries()) {
-            String artifactPath = entry.archivePath();
-            if (artifactPath == null || !artifactPath.endsWith("/")) {
-                continue;
-            }
-            if (sbomPath.startsWith(artifactPath)
-                    && artifactPath.length() > bestLength) {
-                bestMatch = entry.artifactId();
-                bestLength = artifactPath.length();
-            }
-        }
-        return bestMatch;
-    }
-
     /**
      * Scans matched JAR/WAR artifacts for embedded CycloneDX SBOM files.
      *
@@ -1080,8 +995,13 @@ class ArchiveAnalyzer {
      * as the parent.
      * </p>
      */
-    private void detectSbomsInArtifactJars(ArchiveContent content) {
-        Set<ArtifactCoords> knownCoords = content.collectKnownArtifactCoords();
+    private void detectSbomsInArtifactJars(ArchiveContent content,
+            Set<String> detectedSbomPaths) {
+        Map<ArtifactCoords, String> coordsToPath = new HashMap<>();
+        for (ArchiveContent.MavenEntry entry : content.mavenEntries()) {
+            coordsToPath.put(entry.artifactId(), entry.archivePath());
+        }
+        Set<ArtifactCoords> knownCoords = coordsToPath.keySet();
         Set<File> scannedFiles = new HashSet<>();
         for (Artifact artifact : allArtifacts()) {
             ArtifactCoords coords = ArtifactCoords.of(artifact);
@@ -1095,7 +1015,9 @@ class ArchiveAnalyzer {
             if (!scannedFiles.add(file)) {
                 continue;
             }
-            scanJarForSboms(file, coords, content);
+            String parentArchivePath = coordsToPath.getOrDefault(coords, "");
+            scanJarForSboms(file, coords, content,
+                    parentArchivePath, detectedSbomPaths);
         }
     }
 
@@ -1103,7 +1025,8 @@ class ArchiveAnalyzer {
      * Scans a single JAR/WAR file for embedded SBOM entries.
      */
     private static void scanJarForSboms(File jarFile, ArtifactCoords artifactId,
-            ArchiveContent content) {
+            ArchiveContent content, String parentArchivePath,
+            Set<String> detectedSbomPaths) {
         Set<String> processedStems = new HashSet<>();
         try (ZipFile zf = new ZipFile(jarFile)) {
             List<String> sbomEntryNames = new ArrayList<>();
@@ -1125,6 +1048,8 @@ class ArchiveAnalyzer {
                     if (parsedBom != null) {
                         content.addDetectedSbom(new ArchiveContent.DetectedSbom(
                                 entryName, parsedBom, artifactId));
+                        detectedSbomPaths.add(
+                                parentArchivePath + entryName);
                     }
                 }
             }

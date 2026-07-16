@@ -436,6 +436,7 @@ public final class BomMerger {
         if (target.getLicenses() == null && source.getLicenses() != null) {
             target.setLicenses(source.getLicenses());
         }
+        applyEvidenceIfAbsent(target, source);
         if (source.getComponents() != null) {
             Set<String> existingPurls = new HashSet<>();
             if (target.getComponents() != null) {
@@ -471,6 +472,28 @@ public final class BomMerger {
         }
     }
 
+    private static void applyEvidenceIfAbsent(Component target, Component source) {
+        Evidence sourceEvidence = source.getEvidence();
+        if (sourceEvidence == null) {
+            return;
+        }
+        Evidence targetEvidence = target.getEvidence();
+        if (targetEvidence == null) {
+            target.setEvidence(sourceEvidence);
+            return;
+        }
+        if ((targetEvidence.getOccurrences() == null
+                || targetEvidence.getOccurrences().isEmpty())
+                && sourceEvidence.getOccurrences() != null) {
+            targetEvidence.setOccurrences(sourceEvidence.getOccurrences());
+        }
+        if ((targetEvidence.getIdentities() == null
+                || targetEvidence.getIdentities().isEmpty())
+                && sourceEvidence.getIdentities() != null) {
+            targetEvidence.setIdentities(sourceEvidence.getIdentities());
+        }
+    }
+
     /**
      * Moves occurrence evidence from a top-level component to a nested
      * component. When {@code pathPrefix} is non-null, only occurrences
@@ -503,6 +526,13 @@ public final class BomMerger {
                 }
                 nested.getEvidence().addOccurrence(occ);
             }
+        }
+        if (nested.getEvidence() != null
+                && (nested.getEvidence().getIdentities() == null
+                        || nested.getEvidence().getIdentities().isEmpty())
+                && topEvidence.getIdentities() != null
+                && !topEvidence.getIdentities().isEmpty()) {
+            nested.getEvidence().setIdentities(topEvidence.getIdentities());
         }
     }
 
