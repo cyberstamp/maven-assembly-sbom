@@ -515,16 +515,26 @@ public final class BomMerger {
         if (occurrences == null || occurrences.isEmpty()) {
             return;
         }
+        Set<String> existingLocations = new HashSet<>();
+        if (nested.getEvidence() != null && nested.getEvidence().getOccurrences() != null) {
+            for (Occurrence o : nested.getEvidence().getOccurrences()) {
+                if (o.getLocation() != null) {
+                    existingLocations.add(o.getLocation());
+                }
+            }
+        }
         Iterator<Occurrence> it = occurrences.iterator();
         while (it.hasNext()) {
             Occurrence occ = it.next();
             if (occ.getLocation() != null
                     && (pathPrefix == null || occ.getLocation().startsWith(pathPrefix))) {
                 it.remove();
-                if (nested.getEvidence() == null) {
-                    nested.setEvidence(new Evidence());
+                if (existingLocations.add(occ.getLocation())) {
+                    if (nested.getEvidence() == null) {
+                        nested.setEvidence(new Evidence());
+                    }
+                    nested.getEvidence().addOccurrence(occ);
                 }
-                nested.getEvidence().addOccurrence(occ);
             }
         }
         if (nested.getEvidence() != null

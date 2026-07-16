@@ -22,8 +22,6 @@ class SbomGeneratorTest {
     @TempDir
     Path tempDir;
 
-    // ── filterSbomByArchive ─────────────────────────────────────────────
-
     @Test
     void filterRetainsComponentWithMatchingOccurrencePath() {
         Component comp = createLibrary("lib-a", "pkg:maven/g/lib-a@1.0");
@@ -236,7 +234,53 @@ class SbomGeneratorTest {
                 "nested child bom-ref should be collected as surviving");
     }
 
-    // ── deduplicateBomRefs ──────────────────────────────────────────────
+    @Test
+    void filterRemovesFileComponentWithMatchingPathButDifferentHash() {
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("hawtconfig.json");
+        fileComp.setBomRef("file:hawtconfig.json");
+        fileComp.addHash(new Hash(Hash.Algorithm.SHA_256, "stale_hash_from_overlay"));
+        addOccurrence(fileComp, "hawtconfig.json");
+
+        Bom result = filterSbom(List.of(fileComp),
+                Set.of("hawtconfig.json"), Set.of("actual_archive_hash"), "sha256", null);
+
+        assertTrue(result.getComponents().isEmpty(),
+                "FILE component whose path matches but hash differs should be filtered out");
+    }
+
+    @Test
+    void filterRetainsFileComponentWithMatchingPathAndHash() {
+        String hash = "matching_hash";
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("hawtconfig.json");
+        fileComp.setBomRef("file:hawtconfig.json");
+        fileComp.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+        addOccurrence(fileComp, "hawtconfig.json");
+
+        Bom result = filterSbom(List.of(fileComp),
+                Set.of("hawtconfig.json"), Set.of(hash), "sha256", null);
+
+        assertEquals(1, result.getComponents().size(),
+                "FILE component with matching path and hash should survive filtering");
+    }
+
+    @Test
+    void filterRetainsFileComponentWithNoHash() {
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("config.xml");
+        fileComp.setBomRef("file:config.xml");
+        addOccurrence(fileComp, "config.xml");
+
+        Bom result = filterSbom(List.of(fileComp),
+                Set.of("config.xml"), Set.of(), "sha256", null);
+
+        assertEquals(1, result.getComponents().size(),
+                "FILE component with no hash should survive (can't verify)");
+    }
 
     @Test
     void deduplicateNoDuplicatesUnchanged() {
@@ -544,7 +588,91 @@ class SbomGeneratorTest {
                 "dependsOn should be updated to use deeply nested library ref");
     }
 
-    // ── parseExternalBoms ───────────────────────────────────────────────
+    @Test
+    void removeTopLevelFilesDuplicatedByNestedFile() {
+        String hash = "aabb1122nested";
+        Bom bom = new Bom();
+
+        Component topFile = new Component();
+        topFile.setType(Component.Type.FILE);
+        topFile.setName("chunk.js");
+        topFile.setBomRef("file:web/app.war/chunk.js");
+        topFile.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+
+        Component nestedFile = new Component();
+        nestedFile.setType(Component.Type.FILE);
+        nestedFile.setName("chunk.js");
+        nestedFile.setBomRef("file:web/app.war/chunk.js");
+        nestedFile.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+
+        Component parent = createLibrary("app-war", "pkg:maven/g/app-war@1.0");
+        parent.setComponents(new ArrayList<>(List.of(nestedFile)));
+
+        bom.setComponents(new ArrayList<>(List.of(topFile, parent)));
+
+        SbomGenerator.removeTopLevelFilesDuplicatedByNested(bom, "sha256");
+
+        assertEquals(1, bom.getComponents().size(),
+                "top-level file should be removed when nested file has same hash");
+        assertEquals("app-war", bom.getComponents().get(0).getName());
+    }
+
+    @Test
+    void removeTopLevelFilesDuplicatedByNestedPreservesDependencyEntries() {
+        String hash = "aabb1122nested";
+        Bom bom = new Bom();
+
+        Component topFile = new Component();
+        topFile.setType(Component.Type.FILE);
+        topFile.setName("chunk.js");
+        topFile.setBomRef("file:web/app.war/static/js/chunk.js");
+        topFile.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+
+        Component nestedFile = new Component();
+        nestedFile.setType(Component.Type.FILE);
+        nestedFile.setName("chunk.js");
+        nestedFile.setBomRef("file:web/app.war/static/js/chunk.js");
+        nestedFile.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+
+        Component innerWar = createLibrary("inner-war", "pkg:maven/g/inner-war@1.0");
+        innerWar.setComponents(new ArrayList<>(List.of(nestedFile)));
+
+        Component outerWar = createLibrary("outer-war", "pkg:maven/g/outer-war@1.0");
+        outerWar.setComponents(new ArrayList<>(List.of(innerWar)));
+
+        bom.setComponents(new ArrayList<>(List.of(topFile, outerWar)));
+        bom.addDependency(new Dependency("file:web/app.war/static/js/chunk.js"));
+
+        SbomGenerator.removeTopLevelFilesDuplicatedByNested(bom, "sha256");
+
+        assertEquals(1, bom.getComponents().size(),
+                "top-level file should be removed");
+        assertEquals("outer-war", bom.getComponents().get(0).getName());
+
+        assertNotNull(bom.getDependencies());
+        assertTrue(bom.getDependencies().stream()
+                .anyMatch(d -> "file:web/app.war/static/js/chunk.js".equals(d.getRef())),
+                "dependency entry should be preserved because nested component uses the same bom-ref");
+    }
+
+    @Test
+    void removeTopLevelFilesKeepsNonDuplicatedFiles() {
+        Bom bom = new Bom();
+
+        Component topFile = new Component();
+        topFile.setType(Component.Type.FILE);
+        topFile.setName("config.xml");
+        topFile.setBomRef("file:config.xml");
+        topFile.addHash(new Hash(Hash.Algorithm.SHA_256, "uniquehash"));
+
+        Component lib = createLibrary("lib-a", "pkg:maven/g/lib-a@1.0");
+        bom.setComponents(new ArrayList<>(List.of(topFile, lib)));
+
+        SbomGenerator.removeTopLevelFilesDuplicatedByNested(bom, "sha256");
+
+        assertEquals(2, bom.getComponents().size(),
+                "non-duplicated file should not be removed");
+    }
 
     @Test
     void parseExternalBomsNullReturnsEmpty() {
@@ -623,8 +751,6 @@ class SbomGeneratorTest {
 
         assertEquals(1, result.size());
     }
-
-    // ── helpers ──────────────────────────────────────────────────────────
 
     private static Component createLibrary(String name, String bomRef) {
         Component comp = new Component();

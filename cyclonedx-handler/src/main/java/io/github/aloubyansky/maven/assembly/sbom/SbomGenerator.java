@@ -120,6 +120,7 @@ public class SbomGenerator {
         processExternalBoms(bom, externalBoms,
                 archivePaths, archiveHashes, normalizedAlg);
 
+        removeTopLevelFilesDuplicatedByNested(bom, normalizedAlg);
         replaceFileComponentsWithLibraries(bom, normalizedAlg);
         deduplicateBomRefs(bom);
         return bom;
@@ -293,6 +294,11 @@ public class SbomGenerator {
             Set<String> archivePaths, Set<String> archiveHashes,
             String normalizedAlg, String parentPathPrefix) {
         if (hasMatchingOccurrence(comp, archivePaths, parentPathPrefix)) {
+            if (comp.getType() == Component.Type.FILE
+                    && hasVerifiableHash(comp, normalizedAlg)
+                    && !hasMatchingHash(comp, archiveHashes, normalizedAlg)) {
+                return false;
+            }
             return true;
         }
         if (hasEmptyOccurrence(comp, parentPathPrefix)) {
@@ -400,6 +406,78 @@ public class SbomGenerator {
         }
     }
 
+    static void removeTopLevelFilesDuplicatedByNested(Bom bom, String normalizedAlg) {
+        if (bom.getComponents() == null) {
+            return;
+        }
+        Set<String> nestedFileHashes = new HashSet<>();
+        Set<String> nestedFileBomRefs = new HashSet<>();
+        for (Component comp : bom.getComponents()) {
+            collectNestedFileHashes(comp, normalizedAlg, nestedFileHashes);
+            collectNestedFileBomRefs(comp, nestedFileBomRefs);
+        }
+        if (nestedFileHashes.isEmpty()) {
+            return;
+        }
+        Set<String> removedRefs = new HashSet<>();
+        bom.getComponents().removeIf(comp -> {
+            if (comp.getType() != Component.Type.FILE || comp.getHashes() == null) {
+                return false;
+            }
+            for (Hash h : comp.getHashes()) {
+                if (normalizedAlg.equals(normalizeAlgorithm(h.getAlgorithm()))
+                        && nestedFileHashes.contains(h.getValue())) {
+                    if (comp.getBomRef() != null) {
+                        removedRefs.add(comp.getBomRef());
+                    }
+                    return true;
+                }
+            }
+            return false;
+        });
+        if (!removedRefs.isEmpty() && bom.getDependencies() != null) {
+            bom.getDependencies().removeIf(d -> removedRefs.contains(d.getRef())
+                    && !nestedFileBomRefs.contains(d.getRef()));
+            for (Dependency dep : bom.getDependencies()) {
+                if (dep.getDependencies() != null) {
+                    dep.getDependencies().removeIf(
+                            child -> removedRefs.contains(child.getRef())
+                                    && !nestedFileBomRefs.contains(child.getRef()));
+                }
+            }
+        }
+    }
+
+    private static void collectNestedFileBomRefs(Component parent,
+            Set<String> bomRefs) {
+        if (parent.getComponents() == null) {
+            return;
+        }
+        for (Component child : parent.getComponents()) {
+            if (child.getType() == Component.Type.FILE && child.getBomRef() != null) {
+                bomRefs.add(child.getBomRef());
+            }
+            collectNestedFileBomRefs(child, bomRefs);
+        }
+    }
+
+    private static void collectNestedFileHashes(Component parent,
+            String normalizedAlg, Set<String> hashes) {
+        if (parent.getComponents() == null) {
+            return;
+        }
+        for (Component child : parent.getComponents()) {
+            if (child.getType() == Component.Type.FILE && child.getHashes() != null) {
+                for (Hash h : child.getHashes()) {
+                    if (normalizedAlg.equals(normalizeAlgorithm(h.getAlgorithm()))) {
+                        hashes.add(h.getValue());
+                    }
+                }
+            }
+            collectNestedFileHashes(child, normalizedAlg, hashes);
+        }
+    }
+
     static void replaceFileComponentsWithLibraries(Bom bom, String normalizedAlg) {
         if (bom.getComponents() == null) {
             return;
@@ -454,7 +532,7 @@ public class SbomGenerator {
                 List<Component> fileComps = filesByHash.get(h.getValue());
                 if (fileComps != null) {
                     for (Component fileComp : fileComps) {
-                        fileToLibRef.put(fileComp.getBomRef(), comp.getBomRef());
+                        fileToLibRef.putIfAbsent(fileComp.getBomRef(), comp.getBomRef());
                     }
                 }
             }
@@ -526,6 +604,7 @@ public class SbomGenerator {
                         toAdd.add(clone);
                     }
                 }
+                addRenamedDependsOnRefs(dep, originalToNew);
             }
             bom.getDependencies().addAll(toAdd);
         }
@@ -552,6 +631,25 @@ public class SbomGenerator {
             if (comp.getComponents() != null) {
                 deduplicateBomRefs(comp.getComponents(), seen, renames);
             }
+        }
+    }
+
+    private static void addRenamedDependsOnRefs(
+            Dependency dep, Map<String, List<String>> originalToNew) {
+        if (dep.getDependencies() == null) {
+            return;
+        }
+        List<Dependency> childrenToAdd = new ArrayList<>();
+        for (Dependency child : dep.getDependencies()) {
+            List<String> newRefs = originalToNew.get(child.getRef());
+            if (newRefs != null) {
+                for (String newRef : newRefs) {
+                    childrenToAdd.add(new Dependency(newRef));
+                }
+            }
+        }
+        for (Dependency d : childrenToAdd) {
+            dep.addDependency(d);
         }
     }
 

@@ -1071,6 +1071,52 @@ class BomMergerTest {
                 nestedWrapper.getComponents().get(0).getName());
     }
 
+    @Test
+    void mergeUnderDoesNotDuplicateOccurrencesAfterPrefixAndMigration() {
+        // Models the distribution merge: a top-level FILE was found by archive
+        // scanning at web/console.war/hawtconfig.json. The embedded console SBOM
+        // also has the same file at hawtconfig.json. After prefixing the nested
+        // file's occurrence and then migrating the top-level's occurrence, the
+        // nested component should have exactly one occurrence, not two.
+        String hash = "aabb1122";
+
+        Component topFile = new Component();
+        topFile.setType(Component.Type.FILE);
+        topFile.setName("hawtconfig.json");
+        topFile.setBomRef("file:web/console.war/hawtconfig.json");
+        topFile.setPurl("pkg:generic/hawtconfig.json?checksum=sha256:" + hash);
+        topFile.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+        topFile.setEvidence(evidenceWithOccurrence("web/console.war/hawtconfig.json"));
+
+        Component war = createLibrary("org.a", "console", "1.0",
+                "pkg:maven/org.a/console@1.0?type=war");
+        war.setEvidence(evidenceWithOccurrence("web/console.war/"));
+
+        Bom target = buildTargetBom("pkg:maven/com.example/dist@1.0", war, topFile);
+
+        Component sourceFile = new Component();
+        sourceFile.setType(Component.Type.FILE);
+        sourceFile.setName("hawtconfig.json");
+        sourceFile.setBomRef("file:hawtconfig.json");
+        sourceFile.setPurl("pkg:generic/hawtconfig.json?checksum=sha256:" + hash);
+        sourceFile.addHash(new Hash(Hash.Algorithm.SHA_256, hash));
+        sourceFile.setEvidence(evidenceWithOccurrence("hawtconfig.json"));
+
+        Bom source = buildSourceBom(sourceFile);
+
+        BomMerger.mergeUnder(target, "pkg:maven/org.a/console@1.0?type=war", source);
+
+        Component nestedFile = war.getComponents().get(0);
+        assertNotNull(nestedFile.getEvidence());
+        assertEquals(1, nestedFile.getEvidence().getOccurrences().size(),
+                "nested file should have exactly one occurrence, not duplicated");
+        assertEquals("web/console.war/hawtconfig.json",
+                nestedFile.getEvidence().getOccurrences().get(0).getLocation());
+
+        assertFalse(target.getComponents().contains(topFile),
+                "top-level file should be removed after occurrence migration");
+    }
+
     private static Evidence evidenceWithOccurrence(String location) {
         Evidence evidence = new Evidence();
         evidence.addOccurrence(occurrence(location));
