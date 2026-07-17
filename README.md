@@ -1,4 +1,4 @@
-# Assembly CycloneDX
+# Assembly SBOM
 
 Tools for generating and merging [CycloneDX](https://cyclonedx.org/) Software Bills of Materials (SBOMs) in Maven builds.
 
@@ -6,8 +6,9 @@ Tools for generating and merging [CycloneDX](https://cyclonedx.org/) Software Bi
 
 | Module | ArtifactId | Description |
 |---|---|---|
-| [cyclonedx-handler](cyclonedx-handler/) | `assembly-cyclonedx-handler` | `ContainerDescriptorHandler` for the Maven Assembly Plugin — inspects archive contents, identifies Maven artifacts, and generates a CycloneDX 1.6 BOM |
-| [cyclonedx-maven-plugin](cyclonedx-maven-plugin/) | `assembly-cyclonedx-maven-plugin` | Maven plugin with a `merge-sbom` goal for combining multiple CycloneDX SBOMs into one |
+| [core](core/) | `assembly-sbom-core` | Core SBOM generation engine — archive analysis, component identification, BOM building and merging |
+| [handler](handler/) | `assembly-sbom-handler` | `ContainerDescriptorHandler` for the Maven Assembly Plugin — delegates to `assembly-sbom-core` |
+| [maven-plugin](maven-plugin/) | `assembly-sbom-maven-plugin` | Maven plugin with `generate` and `merge` goals |
 
 ## Assembly Handler
 
@@ -25,7 +26,7 @@ Generates a CycloneDX SBOM for archives produced by the [Maven Assembly Plugin](
     <dependencies>
         <dependency>
             <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
-            <artifactId>assembly-cyclonedx-handler</artifactId>
+            <artifactId>assembly-sbom-handler</artifactId>
             <version>0.0.2-SNAPSHOT</version>
         </dependency>
     </dependencies>
@@ -69,7 +70,7 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 <containerDescriptorHandler>
     <handlerName>sbom</handlerName>
     <configuration>
-        <output>external</output>
+        <outputMode>external</outputMode>
     </configuration>
 </containerDescriptorHandler>
 ```
@@ -78,23 +79,23 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 |---|---|---|
 | `format` | `json` | Output format: `json` or `xml` |
 | `outputPath` | `bom.cdx.json` | Filename (or relative path) of the generated BOM when embedded |
-| `output` | `embedded` | Where to write the BOM: `embedded` (inside the archive), `external` (next to the archive file, e.g., `myapp-1.0-dist.zip.cdx.json`), or `all` (both) |
+| `outputMode` | `embedded` | Where to write the BOM: `embedded` (inside the archive), `external` (next to the archive file, e.g., `myapp-1.0-dist.zip.cdx.json`), or `all` (both) |
 | `prettyPrint` | `false` | When `true`, the JSON output is indented for readability. Has no effect on XML (always indented) |
 | `failOnMissingLicense` | `false` | When `true`, the build fails if any library component has no license information in its POM |
 | `hashAlgorithm` | `SHA-256` | The hash algorithm used for content hashes. Must be supported by both `java.security.MessageDigest` and the [CycloneDX specification](https://cyclonedx.org/docs/1.6/json/#hash-alg) (MD5, SHA-1, SHA-256, SHA-384, SHA-512, SHA3-256, SHA3-384, SHA3-512, BLAKE2b-256, BLAKE2b-384, BLAKE2b-512, BLAKE3) |
 | `failOnDuplicateHash` | `true` | When `true`, the build fails if two distinct artifacts have identical content hashes. Set to `false` to log a warning instead |
-| `embeddedSbomHandling` | `merge` | How to handle CycloneDX SBOM files (`.cdx.json`, `.cdx.xml`) found inside the archive: `merge` (import components as nested sub-components of the containing artifact), `link` (add an external reference of type `bom` to the containing artifact), or `ignore` |
-| `mergeBoms` | _(none)_ | Comma-separated list of file paths to external CycloneDX SBOMs to merge into the distribution SBOM. Relative paths are resolved against the project base directory. External SBOM component hashes also participate in archive entry matching |
+| `embeddedSboms` | `merge` | How to handle CycloneDX SBOM files (`.cdx.json`, `.cdx.xml`) found inside the archive: `merge` (import components as nested sub-components of the containing artifact), `link` (add an external reference of type `bom` to the containing artifact), or `ignore` |
+| `externalSboms` | _(none)_ | Comma-separated list of file paths to external CycloneDX SBOMs to merge into the distribution SBOM. Relative paths are resolved against the project base directory. External SBOM component hashes also participate in archive entry matching |
 
 The generator reads `includeBaseDirectory` from the assembly descriptor. When it is `true`, the base directory prefix is stripped from file paths in the BOM.
 
 ### Output Location
 
-By default (`output=embedded`), the BOM is embedded inside the archive alongside the other assembly content. If the assembly uses `<includeBaseDirectory>true</includeBaseDirectory>`, the BOM is placed inside the base directory.
+By default (`outputMode=embedded`), the BOM is embedded inside the archive alongside the other assembly content. If the assembly uses `<includeBaseDirectory>true</includeBaseDirectory>`, the BOM is placed inside the base directory.
 
-Setting `output` to `external` writes the BOM as a separate file next to the archive, named after the archive with a `.cdx.json` (or `.cdx.xml`) suffix. When the BOM is external, the main component is updated with the SHA-256 hash of the archive after it is written. This is useful for CI pipelines that consume the BOM separately.
+Setting `outputMode` to `external` writes the BOM as a separate file next to the archive, named after the archive with a `.cdx.json` (or `.cdx.xml`) suffix. When the BOM is external, the main component is updated with the SHA-256 hash of the archive after it is written. This is useful for CI pipelines that consume the BOM separately.
 
-Setting `output` to `all` produces both an embedded and an external BOM.
+Setting `outputMode` to `all` produces both an embedded and an external BOM.
 
 ### Features
 
@@ -162,7 +163,7 @@ When both JSON and XML variants of the same SBOM exist (same filename stem in th
 
 ##### Handling modes
 
-The `embeddedSbomHandling` option controls what happens with detected SBOMs:
+The `embeddedSboms` option controls what happens with detected SBOMs:
 
 - **`merge`** (default) — the SBOM's components are imported as nested sub-components of the containing artifact. Dependency entries are imported into the distribution BOM's dependency section. No cross-ecosystem dependency edges are created — nesting already captures the containment relationship.
 - **`link`** — an `externalReference` of type `bom` is added to the containing artifact, pointing to the SBOM file's location within the archive. The SBOM file remains in the archive.
@@ -170,7 +171,7 @@ The `embeddedSbomHandling` option controls what happens with detected SBOMs:
 
 ##### External SBOMs
 
-The `mergeBoms` option accepts a comma-separated list of file paths to CycloneDX SBOMs generated outside the Maven build (e.g., by `cdxgen`, `@cyclonedx/cyclonedx-npm`, or pnpm). These SBOMs are:
+The `externalSboms` option accepts a comma-separated list of file paths to CycloneDX SBOMs generated outside the Maven build (e.g., by `cdxgen`, `@cyclonedx/cyclonedx-npm`, or pnpm). These SBOMs are:
 
 1. **Used for archive entry matching** — component hashes from external SBOMs are checked against unmatched archive entries. If a match is found, the entry is identified from the external SBOM rather than appearing as an unidentified FILE component.
 2. **Merged under the main component** — all external SBOM components are nested under the distribution's main component.
@@ -181,8 +182,8 @@ Example configuration:
 <containerDescriptorHandler>
     <handlerName>sbom</handlerName>
     <configuration>
-        <output>external</output>
-        <mergeBoms>target/js-sbom.cdx.json</mergeBoms>
+        <outputMode>external</outputMode>
+        <externalSboms>target/js-sbom.cdx.json</externalSboms>
     </configuration>
 </containerDescriptorHandler>
 ```
@@ -220,25 +221,25 @@ Each component includes CycloneDX `evidence` with `occurrence` entries recording
 
 ## Merge Plugin
 
-The `assembly-cyclonedx-maven-plugin` provides a `merge-sbom` goal for combining multiple CycloneDX SBOMs into a single BOM. This is useful when a project produces artifacts containing components from multiple ecosystems (e.g., a WAR with both Maven and npm dependencies).
+The `assembly-sbom-maven-plugin` provides a `merge` goal for combining multiple CycloneDX SBOMs into a single BOM. This is useful when a project produces artifacts containing components from multiple ecosystems (e.g., a WAR with both Maven and npm dependencies).
 
 ### Quick Start
 
 ```xml
 <plugin>
     <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
-    <artifactId>assembly-cyclonedx-maven-plugin</artifactId>
+    <artifactId>assembly-sbom-maven-plugin</artifactId>
     <version>0.0.2-SNAPSHOT</version>
     <executions>
         <execution>
             <goals>
-                <goal>merge-sbom</goal>
+                <goal>merge</goal>
             </goals>
             <configuration>
-                <baseBom>${project.build.directory}/bom.json</baseBom>
-                <mergeBoms>
-                    <mergeBom>path/to/js-bom.cdx.json</mergeBom>
-                </mergeBoms>
+                <baseSbom>${project.build.directory}/bom.json</baseSbom>
+                <externalSboms>
+                    <externalSbom>path/to/js-bom.cdx.json</externalSbom>
+                </externalSboms>
                 <outputFile>${project.build.directory}/merged-bom.cdx.json</outputFile>
             </configuration>
         </execution>
@@ -250,8 +251,8 @@ The `assembly-cyclonedx-maven-plugin` provides a `merge-sbom` goal for combining
 
 | Option | Default | Description |
 |---|---|---|
-| `baseBom` | _(required)_ | Path to the base SBOM file (e.g., the Maven-generated BOM) |
-| `mergeBoms` | _(required)_ | List of external SBOM files to merge into the base BOM |
+| `baseSbom` | _(required)_ | Path to the base SBOM file (e.g., the Maven-generated BOM) |
+| `externalSboms` | _(required)_ | List of external SBOM files to merge into the base BOM |
 | `outputFile` | `${project.build.directory}/merged-bom.cdx.json` | Path to write the merged BOM |
 | `format` | `json` | Output format: `json` or `xml` |
 | `prettyPrint` | `true` | Whether to indent the JSON output |
@@ -264,7 +265,7 @@ By default, external SBOM components are added as top-level components alongside
 
 The [cyclonedx-maven-plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin) is the official CycloneDX tool for Maven projects. It generates SBOMs by reading the Maven dependency tree. The assembly handler takes a different approach — it analyzes the actual contents of an assembly archive. The two tools serve complementary purposes.
 
-| | Assembly CycloneDX | cyclonedx-maven-plugin |
+| | Assembly SBOM | cyclonedx-maven-plugin |
 |---|---|---|
 | **What it describes** | A distribution archive (ZIP, TAR, etc.) produced by the Maven Assembly Plugin | A Maven module and its resolved dependencies |
 | **How it identifies components** | Computes content hashes of every file in the archive and matches them against known Maven artifacts | Reads the Maven dependency tree (`compile`, `runtime`, `provided`, etc. scopes) |
@@ -283,7 +284,7 @@ The [cyclonedx-maven-plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin
 
 **Use cyclonedx-maven-plugin** when you need a dependency-level SBOM for a Maven module (e.g., a library JAR published to a repository), want aggregate BOMs across a multi-module reactor, or need scope-level control over which dependencies appear in the BOM.
 
-**Use the merge plugin** when your project bundles components from multiple ecosystems (e.g., Maven + npm) and you need a single unified SBOM. Generate ecosystem-specific SBOMs separately, then merge them with the `merge-sbom` goal.
+**Use the merge plugin** when your project bundles components from multiple ecosystems (e.g., Maven + npm) and you need a single unified SBOM. Generate ecosystem-specific SBOMs separately, then merge them with the `merge` goal.
 
 **Use both** when you publish library artifacts with dependency SBOMs _and_ ship distribution archives that need content-accurate SBOMs.
 

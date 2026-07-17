@@ -3,12 +3,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.aloubyansky.maven.assembly.sbom</groupId>
-    <artifactId>assembly-cyclonedx-parent</artifactId>
+    <artifactId>assembly-sbom-parent</artifactId>
     <version>0.0.2-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>Assembly CycloneDX Parent</name>
-    <description>Parent POM for Assembly CycloneDX modules</description>
+    <name>Assembly SBOM Parent</name>
+    <description>Parent POM for Assembly SBOM modules</description>
     <url>https://github.com/aloubyansky/maven-assembly-sbom</url>
     <licenses>
         <license>
@@ -30,8 +30,9 @@
     </developers>
 
     <modules>
-        <module>cyclonedx-handler</module>
-        <module>cyclonedx-maven-plugin</module>
+        <module>core</module>
+        <module>handler</module>
+        <module>maven-plugin</module>
     </modules>
 
     <properties>
@@ -285,7 +286,7 @@
                                 <configuration>
                                     <target>
                                         <replaceregexp file="${project.basedir}/README.md"
-                                            match="(&lt;artifactId&gt;assembly-cyclonedx-handler&lt;/artifactId&gt;\s*&lt;version&gt;)[^&lt;]+(&lt;/version&gt;)"
+                                            match="(&lt;artifactId&gt;assembly-sbom-handler&lt;/artifactId&gt;\s*&lt;version&gt;)[^&lt;]+(&lt;/version&gt;)"
                                             replace="\1${project.version}\2"
                                             flags="s" />
                                     </target>
