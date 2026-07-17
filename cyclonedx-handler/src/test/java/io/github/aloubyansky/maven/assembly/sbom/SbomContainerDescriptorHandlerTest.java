@@ -1240,6 +1240,87 @@ class SbomContainerDescriptorHandlerTest {
     }
 
     @Test
+    void sameJarNestedInTwoWarsPreservedInBoth() throws Exception {
+        Path sharedJar = createTestJar("common-1.0.jar", "common-content");
+
+        Path alphaPage = createTestFile("alpha.html", "<html>alpha</html>");
+        Path war1 = tempDir.resolve("alpha-1.0.war");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(war1))) {
+            jos.putNextEntry(new JarEntry("WEB-INF/lib/common-1.0.jar"));
+            jos.write(Files.readAllBytes(sharedJar));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("index.html"));
+            jos.write(Files.readAllBytes(alphaPage));
+            jos.closeEntry();
+        }
+        Path betaPage = createTestFile("beta.html", "<html>beta</html>");
+        Path war2 = tempDir.resolve("beta-1.0.war");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(war2))) {
+            jos.putNextEntry(new JarEntry("WEB-INF/lib/common-1.0.jar"));
+            jos.write(Files.readAllBytes(sharedJar));
+            jos.closeEntry();
+            jos.putNextEntry(new JarEntry("index.html"));
+            jos.write(Files.readAllBytes(betaPage));
+            jos.closeEntry();
+        }
+
+        Artifact sharedArtifact = createArtifact("org.example", "common", "1.0",
+                "jar", sharedJar.toFile());
+        Artifact war1Artifact = createArtifact("org.example", "alpha", "1.0",
+                "war", war1.toFile());
+        Artifact war2Artifact = createArtifact("org.example", "beta", "1.0",
+                "war", war2.toFile());
+        when(project.getArtifacts()).thenReturn(
+                Set.of(sharedArtifact, war1Artifact, war2Artifact));
+
+        MavenProject alphaProject = mock(MavenProject.class);
+        when(alphaProject.getGroupId()).thenReturn("org.example");
+        when(alphaProject.getArtifactId()).thenReturn("alpha");
+        when(alphaProject.getVersion()).thenReturn("1.0");
+        when(alphaProject.getPackaging()).thenReturn("war");
+        when(alphaProject.getArtifacts()).thenReturn(Set.of(sharedArtifact));
+
+        MavenProject betaProject = mock(MavenProject.class);
+        when(betaProject.getGroupId()).thenReturn("org.example");
+        when(betaProject.getArtifactId()).thenReturn("beta");
+        when(betaProject.getVersion()).thenReturn("1.0");
+        when(betaProject.getPackaging()).thenReturn("war");
+        when(betaProject.getArtifacts()).thenReturn(Set.of(sharedArtifact));
+
+        when(session.getProjects()).thenReturn(List.of(alphaProject, betaProject));
+
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(tempDir.resolve("dist.zip").toFile());
+        archiver.addFile(sharedJar.toFile(),
+                "base/web/alpha.war/WEB-INF/lib/common-1.0.jar");
+        archiver.addFile(alphaPage.toFile(), "base/web/alpha.war/index.html");
+        archiver.addFile(sharedJar.toFile(),
+                "base/web/beta.war/WEB-INF/lib/common-1.0.jar");
+        archiver.addFile(betaPage.toFile(), "base/web/beta.war/index.html");
+        handler.finalizeArchiveCreation(archiver);
+
+        Bom bom = readBomFromArchiver(archiver);
+
+        Component alpha = findComponent(bom, Component.Type.LIBRARY, "alpha");
+        Component beta = findComponent(bom, Component.Type.LIBRARY, "beta");
+        assertNotNull(alpha, "alpha WAR should be detected");
+        assertNotNull(beta, "beta WAR should be detected");
+
+        assertNotNull(alpha.getComponents(), "alpha should have nested components");
+        assertEquals(1, alpha.getComponents().size(),
+                "common JAR should be nested under alpha");
+        assertEquals("common", alpha.getComponents().get(0).getName());
+
+        assertNotNull(beta.getComponents(), "beta should have nested components");
+        assertEquals(1, beta.getComponents().size(),
+                "common JAR should be nested under beta");
+        assertEquals("common", beta.getComponents().get(0).getName());
+
+        assertNull(findComponent(bom, Component.Type.LIBRARY, "common"),
+                "common should NOT appear as a top-level component");
+    }
+
+    @Test
     void ignoredEmbeddedSbomPreservedAsUnmatchedFile() throws Exception {
         handler.setEmbeddedSbomHandling("ignore");
         handler.setOutput("external");

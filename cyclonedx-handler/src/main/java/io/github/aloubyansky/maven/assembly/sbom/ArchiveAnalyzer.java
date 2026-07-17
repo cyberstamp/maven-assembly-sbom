@@ -1001,7 +1001,7 @@ class ArchiveAnalyzer {
         for (ArchiveContent.MavenEntry entry : content.mavenEntries()) {
             coordsToPath.put(entry.artifactId(), entry.archivePath());
         }
-        Set<ArtifactCoords> knownCoords = coordsToPath.keySet();
+        Set<ArtifactCoords> knownCoords = content.collectKnownArtifactCoords();
         Set<File> scannedFiles = new HashSet<>();
         for (Artifact artifact : allArtifacts()) {
             ArtifactCoords coords = ArtifactCoords.of(artifact);
@@ -1015,7 +1015,10 @@ class ArchiveAnalyzer {
             if (!scannedFiles.add(file)) {
                 continue;
             }
-            String parentArchivePath = coordsToPath.getOrDefault(coords, "");
+            String parentArchivePath = coordsToPath.get(coords);
+            if (parentArchivePath == null) {
+                parentArchivePath = "";
+            }
             scanJarForSboms(file, coords, content,
                     parentArchivePath, detectedSbomPaths);
         }
