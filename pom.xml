@@ -38,7 +38,7 @@
     <properties>
         <assembly.plugin.version>3.8.0</assembly.plugin.version>
         <commons.io.version>2.22.0</commons.io.version>
-        <cyclonedx.version>12.2.0</cyclonedx.version>
+        <cyclonedx.version>13.0.0</cyclonedx.version>
         <javax.inject.version>1</javax.inject.version>
         <junit.version>6.1.0</junit.version>
         <maven.compiler.source>17</maven.compiler.source>
