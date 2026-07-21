@@ -27,7 +27,7 @@ Generates a CycloneDX SBOM for archives produced by the [Maven Assembly Plugin](
         <dependency>
             <groupId>io.github.cyberstamp.maven.assembly.sbom</groupId>
             <artifactId>assembly-sbom-handler</artifactId>
-            <version>0.0.2-SNAPSHOT</version>
+            <version>0.0.1-SNAPSHOT</version>
         </dependency>
     </dependencies>
     <!-- executions... -->
@@ -230,7 +230,7 @@ The `assembly-sbom-maven-plugin` provides a `merge` goal for combining multiple 
 <plugin>
     <groupId>io.github.cyberstamp.maven.assembly.sbom</groupId>
     <artifactId>assembly-sbom-maven-plugin</artifactId>
-    <version>0.0.2-SNAPSHOT</version>
+    <version>0.0.1-SNAPSHOT</version>
     <executions>
         <execution>
             <goals>
