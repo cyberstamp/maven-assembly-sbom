@@ -53,6 +53,7 @@ public class SbomGenerator {
     private final boolean failOnDuplicateHash;
     private final boolean failOnMissingLicense;
     private final String embeddedSboms;
+    private final boolean librariesOnly;
 
     private MavenLicenseResolver licenseResolver;
     private List<org.eclipse.aether.graph.Dependency> cachedManagedDeps;
@@ -62,7 +63,7 @@ public class SbomGenerator {
             EffectiveModelResolver effectiveModelResolver,
             MessageDigest messageDigest, Hash.Algorithm bomHashAlgorithm,
             boolean failOnDuplicateHash, boolean failOnMissingLicense,
-            String embeddedSboms) {
+            String embeddedSboms, boolean librariesOnly) {
         this.project = project;
         this.session = session;
         this.repoSystem = repoSystem;
@@ -72,6 +73,7 @@ public class SbomGenerator {
         this.failOnDuplicateHash = failOnDuplicateHash;
         this.failOnMissingLicense = failOnMissingLicense;
         this.embeddedSboms = embeddedSboms;
+        this.librariesOnly = librariesOnly;
     }
 
     /**
@@ -122,6 +124,9 @@ public class SbomGenerator {
 
         removeTopLevelFilesDuplicatedByNested(bom, normalizedAlg);
         replaceFileComponentsWithLibraries(bom, normalizedAlg);
+        if (librariesOnly) {
+            removeFileComponents(bom);
+        }
         deduplicateBomRefs(bom);
         return bom;
     }
@@ -568,6 +573,70 @@ public class SbomGenerator {
         dep.getDependencies().removeAll(toRemove);
         for (Dependency d : toAdd) {
             dep.addDependency(d);
+        }
+    }
+
+    /**
+     * Removes all {@link Component.Type#FILE FILE} components from the BOM
+     * (top-level, main component sub-components, and nested) and cleans up
+     * any dependency references that point to removed components. The main
+     * component itself is never removed, even if its type is FILE.
+     *
+     * @param bom the BOM to modify in place
+     */
+    static void removeFileComponents(Bom bom) {
+        Set<String> removedRefs = new HashSet<>();
+        removeFileComponents(bom.getComponents(), removedRefs);
+        if (bom.getMetadata() != null && bom.getMetadata().getComponent() != null) {
+            removeFileComponents(bom.getMetadata().getComponent().getComponents(), removedRefs);
+        }
+        if (!removedRefs.isEmpty() && bom.getDependencies() != null) {
+            bom.getDependencies().removeIf(d -> removedRefs.contains(d.getRef()));
+            for (Dependency dep : bom.getDependencies()) {
+                removeFileRefs(dep, removedRefs);
+            }
+        }
+    }
+
+    /**
+     * Recursively removes {@link Component.Type#FILE FILE} components from the
+     * given list and any nested component lists, collecting their bomRefs into
+     * {@code removedRefs}.
+     *
+     * @param components the component list to filter, may be {@code null}
+     * @param removedRefs collects the bomRefs of every removed component
+     */
+    private static void removeFileComponents(List<Component> components,
+            Set<String> removedRefs) {
+        if (components == null) {
+            return;
+        }
+        components.removeIf(comp -> {
+            if (comp.getType() == Component.Type.FILE) {
+                if (comp.getBomRef() != null) {
+                    removedRefs.add(comp.getBomRef());
+                }
+                return true;
+            }
+            removeFileComponents(comp.getComponents(), removedRefs);
+            return false;
+        });
+    }
+
+    /**
+     * Recursively removes child dependency references whose ref is contained
+     * in {@code removedRefs}.
+     *
+     * @param dep the dependency whose children are filtered
+     * @param removedRefs the set of bomRefs to remove
+     */
+    private static void removeFileRefs(Dependency dep, Set<String> removedRefs) {
+        if (dep.getDependencies() == null) {
+            return;
+        }
+        dep.getDependencies().removeIf(child -> removedRefs.contains(child.getRef()));
+        for (Dependency child : dep.getDependencies()) {
+            removeFileRefs(child, removedRefs);
         }
     }
 
