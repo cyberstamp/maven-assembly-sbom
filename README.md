@@ -86,6 +86,7 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 | `failOnDuplicateHash` | `true` | When `true`, the build fails if two distinct artifacts have identical content hashes. Set to `false` to log a warning instead |
 | `embeddedSboms` | `merge` | How to handle CycloneDX SBOM files (`.cdx.json`, `.cdx.xml`) found inside the archive: `merge` (import components as nested sub-components of the containing artifact), `link` (add an external reference of type `bom` to the containing artifact), or `ignore` |
 | `externalSboms` | _(none)_ | Comma-separated list of file paths to external CycloneDX SBOMs to merge into the distribution SBOM. Relative paths are resolved against the project base directory. External SBOM component hashes also participate in archive entry matching |
+| `librariesOnly` | `false` | When `true`, generic file components are removed from the generated SBOM, keeping only library components (Maven, npm, etc.). Filtering is applied after embedded and external SBOMs have been merged, so files recognized as libraries by those SBOMs are retained |
 
 The generator reads `includeBaseDirectory` from the assembly descriptor. When it is `true`, the base directory prefix is stripped from file paths in the BOM.
 

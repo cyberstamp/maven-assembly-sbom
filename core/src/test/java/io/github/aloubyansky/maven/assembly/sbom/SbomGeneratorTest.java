@@ -409,6 +409,126 @@ class SbomGeneratorTest {
         assertNull(bom.getComponents());
     }
 
+    // ── removeFileComponents ─────────────────────────────────────────────
+
+    @Test
+    void removeFileComponentsStripsTopLevelFiles() {
+        Bom bom = new Bom();
+        Component lib = createLibrary("lib-a", "ref-a");
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("config.xml");
+        fileComp.setBomRef("file:config.xml");
+        bom.setComponents(new ArrayList<>(List.of(lib, fileComp)));
+
+        SbomGenerator.removeFileComponents(bom);
+
+        assertEquals(1, bom.getComponents().size());
+        assertEquals("lib-a", bom.getComponents().get(0).getName());
+    }
+
+    @Test
+    void removeFileComponentsStripsNestedFiles() {
+        Bom bom = new Bom();
+        Component lib = createLibrary("lib-a", "ref-a");
+        Component nestedFile = new Component();
+        nestedFile.setType(Component.Type.FILE);
+        nestedFile.setName("nested.txt");
+        nestedFile.setBomRef("file:nested.txt");
+        Component nestedLib = createLibrary("nested-lib", "ref-nested");
+        lib.setComponents(new ArrayList<>(List.of(nestedFile, nestedLib)));
+        bom.setComponents(new ArrayList<>(List.of(lib)));
+
+        SbomGenerator.removeFileComponents(bom);
+
+        assertEquals(1, bom.getComponents().size());
+        assertEquals(1, lib.getComponents().size());
+        assertEquals("nested-lib", lib.getComponents().get(0).getName());
+    }
+
+    @Test
+    void removeFileComponentsCleansDependencyRefs() {
+        Bom bom = new Bom();
+        Component lib = createLibrary("lib-a", "ref-a");
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("data.bin");
+        fileComp.setBomRef("file:data.bin");
+        bom.setComponents(new ArrayList<>(List.of(lib, fileComp)));
+
+        Dependency depA = new Dependency("ref-a");
+        depA.addDependency(new Dependency("file:data.bin"));
+        Dependency depFile = new Dependency("file:data.bin");
+        bom.addDependency(depA);
+        bom.addDependency(depFile);
+
+        SbomGenerator.removeFileComponents(bom);
+
+        assertEquals(1, bom.getComponents().size());
+        assertEquals(1, bom.getDependencies().size());
+        assertEquals("ref-a", bom.getDependencies().get(0).getRef());
+        assertTrue(bom.getDependencies().get(0).getDependencies() == null
+                || bom.getDependencies().get(0).getDependencies().isEmpty());
+    }
+
+    @Test
+    void removeFileComponentsCleansNestedDependencyRefs() {
+        Bom bom = new Bom();
+        Component lib = createLibrary("lib-a", "ref-a");
+        Component fileComp = new Component();
+        fileComp.setType(Component.Type.FILE);
+        fileComp.setName("deep.bin");
+        fileComp.setBomRef("file:deep.bin");
+        bom.setComponents(new ArrayList<>(List.of(lib, fileComp)));
+
+        Dependency grandchild = new Dependency("file:deep.bin");
+        Dependency child = new Dependency("ref-child");
+        child.addDependency(grandchild);
+        Dependency root = new Dependency("ref-a");
+        root.addDependency(child);
+        bom.addDependency(root);
+
+        SbomGenerator.removeFileComponents(bom);
+
+        Dependency surviving = bom.getDependencies().get(0);
+        assertEquals("ref-a", surviving.getRef());
+        Dependency survivingChild = surviving.getDependencies().get(0);
+        assertEquals("ref-child", survivingChild.getRef());
+        assertTrue(survivingChild.getDependencies() == null
+                || survivingChild.getDependencies().isEmpty(),
+                "grandchild file ref should be removed");
+    }
+
+    @Test
+    void removeFileComponentsNullComponentsIsNoop() {
+        Bom bom = new Bom();
+        SbomGenerator.removeFileComponents(bom);
+        assertNull(bom.getComponents());
+    }
+
+    @Test
+    void removeFileComponentsEmptyComponentsIsNoop() {
+        Bom bom = new Bom();
+        bom.setComponents(new ArrayList<>());
+        SbomGenerator.removeFileComponents(bom);
+        assertTrue(bom.getComponents().isEmpty());
+    }
+
+    @Test
+    void removeFileComponentsPreservesNonFileComponents() {
+        Bom bom = new Bom();
+        Component lib = createLibrary("lib-a", "ref-a");
+        Component app = new Component();
+        app.setType(Component.Type.APPLICATION);
+        app.setName("my-app");
+        app.setBomRef("ref-app");
+        bom.setComponents(new ArrayList<>(List.of(lib, app)));
+
+        SbomGenerator.removeFileComponents(bom);
+
+        assertEquals(2, bom.getComponents().size());
+    }
+
     // ── replaceFileComponentsWithLibraries ───────────────────────────────
 
     @Test

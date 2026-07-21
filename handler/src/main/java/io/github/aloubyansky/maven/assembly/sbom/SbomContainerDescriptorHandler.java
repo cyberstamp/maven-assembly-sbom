@@ -71,6 +71,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     private boolean failOnDuplicateHash = true;
     private String embeddedSboms = "merge";
     private String externalSboms;
+    private boolean librariesOnly;
 
     private boolean includeBaseDir;
     private String assemblyId;
@@ -130,7 +131,8 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
             SbomGenerator generator = new SbomGenerator(
                     project, session, repoSystem, effectiveModelResolver,
                     messageDigest, bomHashAlgorithm,
-                    failOnDuplicateHash, failOnMissingLicense, embeddedSboms);
+                    failOnDuplicateHash, failOnMissingLicense, embeddedSboms,
+                    librariesOnly);
             Bom bom = generator.generate(entries, baseDirPrefix, externalBomList,
                     assemblyId, classifier, detectArchiveType(archiver));
 
@@ -772,5 +774,13 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     @SuppressWarnings("unused")
     public void setExternalSboms(String externalSboms) {
         this.externalSboms = externalSboms;
+    }
+
+    /**
+     * Excludes generic file components, keeping only libraries (Maven, npm, etc.).
+     */
+    @SuppressWarnings("unused")
+    public void setLibrariesOnly(boolean librariesOnly) {
+        this.librariesOnly = librariesOnly;
     }
 }

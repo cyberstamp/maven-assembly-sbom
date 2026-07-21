@@ -78,6 +78,9 @@ public class GenerateSbomMojo extends AbstractMojo {
     @Parameter(defaultValue = "true")
     private boolean failOnDuplicateHash;
 
+    @Parameter(defaultValue = "false")
+    private boolean librariesOnly;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (!inputDirectory.isDirectory()) {
@@ -117,7 +120,8 @@ public class GenerateSbomMojo extends AbstractMojo {
         SbomGenerator generator = new SbomGenerator(
                 project, session, repoSystem, effectiveModelResolver,
                 messageDigest, bomHashAlgorithm,
-                failOnDuplicateHash, failOnMissingLicense, embeddedSboms);
+                failOnDuplicateHash, failOnMissingLicense, embeddedSboms,
+                librariesOnly);
         Bom bom = generator.generate(entries, null, externalBomList,
                 null, null, project.getPackaging());
 
