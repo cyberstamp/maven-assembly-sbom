@@ -52,7 +52,7 @@
         <sisu.version>1.0.1</sisu.version>
         <version.formatter.plugin>2.29.0</version.formatter.plugin>
         <version.impsort.plugin>1.13.0</version.impsort.plugin>
-        <quarkus-ide-config.version>3.36.2</quarkus-ide-config.version>
+        <quarkus-ide-config.version>3.37.3</quarkus-ide-config.version>
         <central-publishing-plugin.version>0.10.0</central-publishing-plugin.version>
         <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
         <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
