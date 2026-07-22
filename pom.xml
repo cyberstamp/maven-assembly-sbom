@@ -289,6 +289,10 @@
                                             match="(&lt;artifactId&gt;assembly-sbom-handler&lt;/artifactId&gt;\s*&lt;version&gt;)[^&lt;]+(&lt;/version&gt;)"
                                             replace="\1${project.version}\2"
                                             flags="s" />
+                                        <replaceregexp file="${project.basedir}/README.md"
+                                            match="(&lt;artifactId&gt;assembly-sbom-maven-plugin&lt;/artifactId&gt;\s*&lt;version&gt;)[^&lt;]+(&lt;/version&gt;)"
+                                            replace="\1${project.version}\2"
+                                            flags="sg" />
                                     </target>
                                 </configuration>
                             </execution>
