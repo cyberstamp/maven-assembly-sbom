@@ -125,7 +125,7 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 | Option | Default | Description |
 |---|---|---|
 | `format` | `json` | Output format: `json` or `xml` |
-| `outputPath` | `bom.cdx.json` | Filename (or relative path) of the generated BOM when embedded |
+| `outputPath` | `bom.cdx.json` | Filename (or relative path) of the BOM inside the archive. Only effective when `outputMode` includes `embedded` |
 | `outputMode` | `embedded` | Where to write the BOM: `embedded` (inside the archive), `external` (next to the archive file, e.g., `myapp-1.0-dist.zip.cdx.json`), or `all` (both) |
 | `prettyPrint` | `false` | When `true`, the JSON output is indented for readability. Has no effect on XML (always indented) |
 | `failOnMissingLicense` | `false` | When `true`, the build fails if any library component has no license information in its POM |
