@@ -87,6 +87,7 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 | `embeddedSboms` | `merge` | How to handle CycloneDX SBOM files (`.cdx.json`, `.cdx.xml`) found inside the archive: `merge` (import components as nested sub-components of the containing artifact), `link` (add an external reference of type `bom` to the containing artifact), or `ignore` |
 | `externalSboms` | _(none)_ | Comma-separated list of file paths to external CycloneDX SBOMs to merge into the distribution SBOM. Relative paths are resolved against the project base directory. External SBOM component hashes also participate in archive entry matching |
 | `librariesOnly` | `false` | When `true`, generic file components are removed from the generated SBOM, keeping only library components (Maven, npm, etc.). Filtering is applied after embedded and external SBOMs have been merged, so files recognized as libraries by those SBOMs are retained |
+| `attach` | `false` | When `true`, the generated SBOM is attached to the Maven project as an artifact. The attached artifact has the same groupId, artifactId, classifier, and version as the distribution archive but a different type (`cdx.json` or `cdx.xml`). Requires `outputMode` to be `external` or `all`. If the Maven Assembly Plugin's own `attach` is `false`, the SBOM is not attached either |
 
 The generator reads `includeBaseDirectory` from the assembly descriptor. When it is `true`, the base directory prefix is stripped from file paths in the BOM.
 
@@ -97,6 +98,20 @@ By default (`outputMode=embedded`), the BOM is embedded inside the archive along
 Setting `outputMode` to `external` writes the BOM as a separate file next to the archive, named after the archive with a `.cdx.json` (or `.cdx.xml`) suffix. When the BOM is external, the main component is updated with the SHA-256 hash of the archive after it is written. This is useful for CI pipelines that consume the BOM separately.
 
 Setting `outputMode` to `all` produces both an embedded and an external BOM.
+
+#### Attaching the SBOM as a Maven Artifact
+
+Setting `attach` to `true` registers the external BOM as an attached Maven project artifact. This means the SBOM is installed to the local repository and deployed to remote repositories alongside the distribution archive. The attached artifact uses type `cdx.json` (or `cdx.xml`) and the same classifier as the distribution archive, so for a distribution attached as `myapp-1.0-dist.zip`, the SBOM is installed as `myapp-1.0-dist.cdx.json`.
+
+```xml
+<containerDescriptorHandler>
+    <handlerName>sbom</handlerName>
+    <configuration>
+        <outputMode>external</outputMode>
+        <attach>true</attach>
+    </configuration>
+</containerDescriptorHandler>
+```
 
 ### Features
 
@@ -274,7 +289,7 @@ The [cyclonedx-maven-plugin](https://github.com/CycloneDX/cyclonedx-maven-plugin
 | **Unpacked archives** | Detects unpacked WARs/JARs by matching internal entry hashes; identifies nested JARs within them | No archive content analysis — operates on declared dependencies only |
 | **Non-artifact files** | Tracks config files, scripts, and other non-Maven content as `file` components | Not applicable — only tracks Maven dependencies |
 | **Dependency graph** | Reflects the subset of the Maven dependency tree actually present in the archive | Reflects the full Maven dependency tree for configured scopes |
-| **BOM placement** | Embedded inside the archive, written externally alongside it, or both | Attached as a separate Maven artifact with a `cyclonedx` classifier |
+| **BOM placement** | Embedded inside the archive, written externally alongside it, or both. Can optionally be attached as a Maven artifact with type `cdx.json`/`cdx.xml` | Attached as a separate Maven artifact with a `cyclonedx` classifier |
 | **Deduplication** | Same artifact at multiple archive paths → single component with multiple `evidence/occurrence` entries | Not applicable (no archive paths) |
 | **Multi-module support** | One BOM per assembly | Per-module BOMs, aggregate BOMs across the reactor, and package-specific BOMs (`war`/`ear`) |
 | **Integration point** | `ContainerDescriptorHandler` — runs automatically during `mvn package` as part of the assembly plugin | Standalone plugin goals (`makeBom`, `makeAggregateBom`, `makePackageBom`) |

@@ -21,6 +21,7 @@ import org.apache.maven.plugins.assembly.filter.ContainerDescriptorHandler;
 import org.apache.maven.plugins.assembly.model.Assembly;
 import org.apache.maven.plugins.assembly.model.io.xpp3.AssemblyXpp3Reader;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.MavenProjectHelper;
 import org.codehaus.plexus.archiver.ArchiveEntry;
 import org.codehaus.plexus.archiver.Archiver;
 import org.codehaus.plexus.archiver.ArchiverException;
@@ -62,6 +63,9 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     @Inject
     private EffectiveModelResolver effectiveModelResolver;
 
+    @Inject
+    private MavenProjectHelper projectHelper;
+
     private String format = "json";
     private String outputPath = "bom.cdx.json";
     private String outputMode = "embedded";
@@ -72,10 +76,12 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     private String embeddedSboms = "merge";
     private String externalSboms;
     private boolean librariesOnly;
+    private boolean attach;
 
     private boolean includeBaseDir;
     private String assemblyId;
     private String classifier;
+    private boolean doAttach;
     // not thread-safe — safe here because finalizeArchiveCreation is single-threaded
     private MessageDigest messageDigest;
     private Hash.Algorithm bomHashAlgorithm;
@@ -152,6 +158,15 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
 
     /**
      * Initializes per-archive configuration.
+     *
+     * <p>
+     * Validates the configured format, output mode, embedded SBOM
+     * handling, hash algorithm, and attachment settings. Resolves the
+     * assembly descriptor to determine the classifier, base-directory
+     * inclusion, and whether the distribution archive is attached.
+     * </p>
+     *
+     * @throws ArchiverException if any configuration value is invalid
      */
     private void initConfig(Archiver archiver) throws ArchiverException {
         if (!"json".equalsIgnoreCase(format) && !"xml".equalsIgnoreCase(format)) {
@@ -162,6 +177,11 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
             throw new ArchiverException(
                     "Unsupported output mode: " + outputMode
                             + ". Supported values: embedded, external, all");
+        }
+        if (attach && !isExternal()) {
+            throw new ArchiverException(
+                    "SBOM attach requires outputMode 'external' or 'all', "
+                            + "but outputMode is '" + outputMode + "'");
         }
         if (!"merge".equalsIgnoreCase(embeddedSboms)
                 && !"link".equalsIgnoreCase(embeddedSboms)
@@ -177,6 +197,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
                 ? assemblyConfig.assembly.getId()
                 : "assembly";
         classifier = assemblyConfig.classifier;
+        doAttach = resolveDoAttach(assemblyConfig);
         try {
             bomHashAlgorithm = Hash.Algorithm.fromSpec(hashAlgorithm);
         } catch (IllegalArgumentException e) {
@@ -188,6 +209,34 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
         } catch (NoSuchAlgorithmException e) {
             throw new ArchiverException("Unsupported hash algorithm: " + hashAlgorithm, e);
         }
+    }
+
+    /**
+     * Determines whether the SBOM should actually be attached to the
+     * Maven project, considering both this handler's {@code attach}
+     * setting and whether the Maven Assembly Plugin attaches the
+     * distribution archive itself.
+     *
+     * <p>
+     * If {@code attach} is {@code true} but the assembly plugin does
+     * not attach the archive (its own {@code attach} is {@code false}),
+     * a warning is logged and attachment is skipped.
+     * </p>
+     *
+     * @param assemblyConfig the resolved assembly configuration
+     * @return {@code true} if the SBOM should be attached
+     */
+    private boolean resolveDoAttach(AssemblyConfig assemblyConfig) {
+        if (!attach) {
+            return false;
+        }
+        if (!assemblyConfig.assemblyAttach) {
+            log.warn("SBOM attach is enabled but the Maven Assembly Plugin "
+                    + "does not attach the distribution archive; "
+                    + "skipping SBOM attachment");
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -235,14 +284,23 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     }
 
     /**
-     * Resolved assembly descriptor and classifier.
+     * Resolved assembly descriptor configuration.
+     *
+     * @param assembly the parsed assembly descriptor, or {@code null}
+     *        if it could not be located
+     * @param classifier the artifact classifier derived from the
+     *        assembly plugin configuration (may be {@code null})
+     * @param assemblyAttach whether the Maven Assembly Plugin attaches
+     *        the archive as a project artifact
      */
-    private record AssemblyConfig(Assembly assembly, String classifier) {
+    private record AssemblyConfig(Assembly assembly, String classifier,
+            boolean assemblyAttach) {
     }
 
     /**
      * Locates the assembly descriptor that produced the archive and
-     * resolves the artifact classifier from the plugin configuration.
+     * resolves the artifact classifier and attachment setting from the
+     * plugin configuration.
      *
      * <p>
      * The classifier is determined by the assembly plugin's
@@ -251,45 +309,92 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      * otherwise, the assembly id is used as the classifier unless
      * {@code appendAssemblyId} is set to {@code false}.
      * </p>
+     *
+     * <p>
+     * The {@code assemblyAttach} flag reflects the assembly plugin's
+     * own {@code attach} configuration (default {@code true}). When
+     * the assembly plugin does not attach the archive to the project,
+     * the SBOM should not be attached either.
+     * </p>
      */
     private AssemblyConfig resolveAssemblyConfig(Archiver archiver) {
         try {
             File destFile = archiver.getDestFile();
             if (destFile == null) {
-                return new AssemblyConfig(null, null);
+                return new AssemblyConfig(null, null, true);
             }
             String destName = destFile.getName();
             org.apache.maven.model.PluginExecution soleExec = null;
             Assembly soleAssembly = null;
+            boolean solePluginAttach = true;
+            boolean foundPlugin = false;
             int candidateCount = 0;
             for (org.apache.maven.model.Plugin plugin : project.getBuild().getPlugins()) {
                 if (!"maven-assembly-plugin".equals(plugin.getArtifactId())) {
                     continue;
                 }
+                foundPlugin = true;
+                boolean pluginAttach = resolveAssemblyAttach(plugin.getConfiguration());
+                solePluginAttach = pluginAttach;
                 String defaultFinalName = resolveFinalName(plugin.getConfiguration());
                 for (org.apache.maven.model.PluginExecution exec : plugin.getExecutions()) {
+                    boolean execAttach = resolveAssemblyAttach(
+                            exec.getConfiguration(), pluginAttach);
                     List<Assembly> descriptors = findAllDescriptors(exec);
                     Assembly match = matchDescriptorByFilename(
                             exec, destName, defaultFinalName, descriptors);
                     if (match != null) {
                         String classifier = resolveClassifier(exec, match.getId());
-                        return new AssemblyConfig(match, classifier);
+                        return new AssemblyConfig(match, classifier, execAttach);
                     }
                     for (Assembly candidate : descriptors) {
                         candidateCount++;
                         soleExec = exec;
                         soleAssembly = candidate;
+                        solePluginAttach = pluginAttach;
                     }
                 }
             }
             if (candidateCount == 1) {
                 String classifier = resolveClassifier(soleExec, soleAssembly.getId());
-                return new AssemblyConfig(soleAssembly, classifier);
+                boolean soleAttach = resolveAssemblyAttach(
+                        soleExec.getConfiguration(), solePluginAttach);
+                return new AssemblyConfig(soleAssembly, classifier, soleAttach);
+            }
+            if (foundPlugin) {
+                return new AssemblyConfig(null, null, solePluginAttach);
             }
         } catch (Exception e) {
             log.debug("Could not locate assembly descriptor for {}", archiver.getDestFile(), e);
         }
-        return new AssemblyConfig(null, null);
+        return new AssemblyConfig(null, null, true);
+    }
+
+    /**
+     * Resolves the assembly plugin's {@code attach} setting from a
+     * configuration element.
+     *
+     * @param config the plugin or execution configuration (may be {@code null})
+     * @return {@code true} if the archive should be attached (the default)
+     */
+    private static boolean resolveAssemblyAttach(Object config) {
+        return resolveAssemblyAttach(config, true);
+    }
+
+    /**
+     * Resolves the assembly plugin's {@code attach} setting from a
+     * configuration element, falling back to the given default.
+     *
+     * @param config the plugin or execution configuration (may be {@code null})
+     * @param fallback the value to return if no {@code attach} element is present
+     * @return {@code true} if the archive should be attached
+     */
+    private static boolean resolveAssemblyAttach(Object config, boolean fallback) {
+        String value = getConfigValue(config, "attach");
+        if (value == null) {
+            return fallback;
+        }
+        return !"false".equalsIgnoreCase(value);
     }
 
     /**
@@ -483,8 +588,17 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     }
 
     /**
-     * Writes the BOM as an external file, embedded in the archive, or both,
-     * depending on the configured {@code outputMode} mode.
+     * Writes the BOM as an external file, embedded in the archive, or
+     * both, depending on the configured {@code outputMode}. When
+     * {@link #doAttach} is {@code true}, the external BOM file is
+     * registered as an attached Maven project artifact.
+     *
+     * <p>
+     * Attachment is deferred to a post-archive hook so that the
+     * attached file includes the archive's content hash. If the hook
+     * cannot be registered, attachment falls back to this method and
+     * the BOM will not contain the archive hash.
+     * </p>
      */
     private void writeBomOutput(Bom bom, String baseDirPrefix, Archiver archiver)
             throws IOException, org.cyclonedx.exception.GeneratorException {
@@ -501,7 +615,11 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
             tempFile = writeBomToArchive(bom, baseDirPrefix, archiver);
         }
         if (externalBomPath != null || tempFile != null) {
-            registerPostArchiveHook(archiver, bom, externalBomPath, tempFile);
+            boolean hookRegistered = registerPostArchiveHook(
+                    archiver, bom, externalBomPath, tempFile);
+            if (doAttach && externalBomPath != null && !hookRegistered) {
+                attachSbomArtifact(externalBomPath, resolveAttachType(), classifier);
+            }
         }
     }
 
@@ -518,8 +636,9 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     }
 
     /**
-     * Registers a single post-archive closeable that updates the external
-     * BOM with the archive hash and deletes the embedded BOM temp file.
+     * Registers a single post-archive closeable that updates the
+     * external BOM with the archive hash, attaches the SBOM artifact
+     * if configured, and deletes the embedded BOM temp file.
      *
      * <p>
      * The Plexus Archiver API provides no public post-write hook.
@@ -528,9 +647,11 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      * or inaccessible, a warning is logged and the BOM is
      * produced without the archive hash.
      * </p>
+     *
+     * @return {@code true} if the hook was successfully registered
      */
     @SuppressWarnings("unchecked")
-    private void registerPostArchiveHook(Archiver archiver, Bom bom,
+    private boolean registerPostArchiveHook(Archiver archiver, Bom bom,
             Path externalBomPath, Path tempFile) {
         try {
             java.lang.reflect.Field field = findField(archiver.getClass(), "closeables");
@@ -539,25 +660,33 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
                     log.warn("Could not find closeables field on archiver, "
                             + "archive hash will not be added to the external BOM");
                 }
-                return;
+                return false;
             }
             field.setAccessible(true);
             List<java.io.Closeable> closeables = (List<java.io.Closeable>) field.get(archiver);
             MessageDigest digest = messageDigest;
             Hash.Algorithm algorithm = bomHashAlgorithm;
+            boolean attachInHook = doAttach;
+            String attachType = resolveAttachType();
+            String attachClassifier = classifier;
             closeables.add(() -> {
                 if (externalBomPath != null) {
                     updateBomWithArchiveHash(archiver, bom, externalBomPath, digest, algorithm);
+                }
+                if (attachInHook && externalBomPath != null) {
+                    attachSbomArtifact(externalBomPath, attachType, attachClassifier);
                 }
                 if (tempFile != null) {
                     Files.deleteIfExists(tempFile);
                 }
             });
+            return true;
         } catch (Exception e) {
             if (externalBomPath != null) {
                 log.warn("Could not register post-archive hook, "
                         + "archive hash will not be added to the external BOM", e);
             }
+            return false;
         }
     }
 
@@ -593,6 +722,22 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
         } catch (Exception e) {
             log.warn("Failed to update BOM with archive hash", e);
         }
+    }
+
+    /**
+     * Returns the Maven artifact type for the SBOM attachment.
+     */
+    private String resolveAttachType() {
+        return "xml".equalsIgnoreCase(format) ? "cdx.xml" : "cdx.json";
+    }
+
+    /**
+     * Attaches the SBOM file as a Maven project artifact that mirrors
+     * the distribution archive's coordinates with the given type.
+     */
+    private void attachSbomArtifact(Path bomFile, String type, String classifier) {
+        projectHelper.attachArtifact(project, type, classifier, bomFile.toFile());
+        log.info("Attached SBOM artifact: type={}, classifier={}", type, classifier);
     }
 
     /**
@@ -782,5 +927,29 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     @SuppressWarnings("unused")
     public void setLibrariesOnly(boolean librariesOnly) {
         this.librariesOnly = librariesOnly;
+    }
+
+    /**
+     * Attaches the generated SBOM as a Maven project artifact.
+     *
+     * <p>
+     * When enabled, the SBOM is registered as an attached artifact
+     * with the same groupId, artifactId, classifier, and version as
+     * the distribution archive but with a different type
+     * ({@code cdx.json} or {@code cdx.xml} depending on the
+     * configured {@linkplain #setFormat(String) format}).
+     * </p>
+     *
+     * <p>
+     * Requires {@linkplain #setOutputMode(String) outputMode} to
+     * include external output ({@code "external"} or {@code "all"}).
+     * If the Maven Assembly Plugin's own {@code attach} configuration
+     * is {@code false} (i.e., the distribution archive is not
+     * attached), the SBOM will not be attached either.
+     * </p>
+     */
+    @SuppressWarnings("unused")
+    public void setAttach(boolean attach) {
+        this.attach = attach;
     }
 }

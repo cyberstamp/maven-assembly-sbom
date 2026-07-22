@@ -22,10 +22,13 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.License;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Plugin;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.MavenProjectHelper;
 import org.codehaus.plexus.archiver.ArchiverException;
 import org.codehaus.plexus.archiver.zip.ZipArchiver;
 import org.codehaus.plexus.components.io.fileselectors.FileInfo;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.cyclonedx.model.Bom;
 import org.cyclonedx.model.Component;
 import org.cyclonedx.model.Hash;
@@ -64,6 +67,9 @@ class SbomContainerDescriptorHandlerTest {
     @Mock
     EffectiveModelResolver effectiveModelResolver;
 
+    @Mock
+    MavenProjectHelper projectHelper;
+
     private SbomContainerDescriptorHandler handler;
 
     @BeforeEach
@@ -73,6 +79,7 @@ class SbomContainerDescriptorHandlerTest {
         setField(handler, "session", session);
         setField(handler, "repoSystem", repoSystem);
         setField(handler, "effectiveModelResolver", effectiveModelResolver);
+        setField(handler, "projectHelper", projectHelper);
 
         lenient().when(project.getGroupId()).thenReturn("com.example");
         lenient().when(project.getArtifactId()).thenReturn("test-app");
@@ -1666,6 +1673,110 @@ class SbomContainerDescriptorHandlerTest {
         assertTrue(innerWarComp.getComponents().stream()
                 .anyMatch(c -> "lodash".equals(c.getName())),
                 "lodash should be nested under inner-war (2-level nesting)");
+    }
+
+    @Test
+    void attachWithEmbeddedOutputModeThrows() throws Exception {
+        handler.setAttach(true);
+        handler.setOutputMode("embedded");
+        Path props = createTestFile("data.txt", "hello");
+
+        ZipArchiver archiver = buildArchiver("base/data.txt", props);
+        var ex = assertThrows(ArchiverException.class,
+                () -> handler.finalizeArchiveCreation(archiver));
+        assertTrue(ex.getMessage().contains("outputMode"),
+                "error should mention outputMode: " + ex.getMessage());
+    }
+
+    @Test
+    void attachWithExternalOutputCallsProjectHelper() throws Exception {
+        handler.setAttach(true);
+        handler.setOutputMode("external");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        Path archivePath = tempDir.resolve("attach-test.zip");
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(archivePath.toFile());
+        Path props = createTestFile("attach-data.txt", "data");
+        archiver.addFile(props.toFile(), "base/conf/app.properties");
+        handler.finalizeArchiveCreation(archiver);
+        archiver.createArchive();
+
+        Path bomFile = tempDir.resolve("attach-test.zip.cdx.json");
+        assertTrue(Files.exists(bomFile), "external BOM should be written");
+        verify(projectHelper).attachArtifact(
+                eq(project), eq("cdx.json"), isNull(), eq(bomFile.toFile()));
+    }
+
+    @Test
+    void attachWithXmlFormatUsesCorrectType() throws Exception {
+        handler.setAttach(true);
+        handler.setOutputMode("external");
+        handler.setFormat("xml");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        Path archivePath = tempDir.resolve("attach-xml.zip");
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(archivePath.toFile());
+        Path props = createTestFile("xml-data.txt", "data");
+        archiver.addFile(props.toFile(), "base/data.txt");
+        handler.finalizeArchiveCreation(archiver);
+        archiver.createArchive();
+
+        verify(projectHelper).attachArtifact(
+                eq(project), eq("cdx.xml"), isNull(), any(File.class));
+    }
+
+    @Test
+    void attachSkippedWhenAssemblyPluginAttachIsFalse() throws Exception {
+        handler.setAttach(true);
+        handler.setOutputMode("external");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        // Configure assembly plugin with attach=false
+        Plugin assemblyPlugin = new Plugin();
+        assemblyPlugin.setGroupId("org.apache.maven.plugins");
+        assemblyPlugin.setArtifactId("maven-assembly-plugin");
+        Xpp3Dom pluginConfig = new Xpp3Dom("configuration");
+        Xpp3Dom attachNode = new Xpp3Dom("attach");
+        attachNode.setValue("false");
+        pluginConfig.addChild(attachNode);
+        assemblyPlugin.setConfiguration(pluginConfig);
+        Build build = new Build();
+        build.setDirectory(tempDir.resolve("target").toString());
+        build.addPlugin(assemblyPlugin);
+        when(project.getBuild()).thenReturn(build);
+
+        Path archivePath = tempDir.resolve("no-attach.zip");
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(archivePath.toFile());
+        Path props = createTestFile("no-attach-data.txt", "data");
+        archiver.addFile(props.toFile(), "base/data.txt");
+        handler.finalizeArchiveCreation(archiver);
+        archiver.createArchive();
+
+        verify(projectHelper, never()).attachArtifact(
+                any(), any(String.class), any(), any(File.class));
+    }
+
+    @Test
+    void attachWithOutputModeAllCallsProjectHelper() throws Exception {
+        handler.setAttach(true);
+        handler.setOutputMode("all");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        Path archivePath = tempDir.resolve("attach-all.zip");
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(archivePath.toFile());
+        Path props = createTestFile("all-data.txt", "data");
+        archiver.addFile(props.toFile(), "base/data.txt");
+        handler.finalizeArchiveCreation(archiver);
+        archiver.createArchive();
+
+        Path bomFile = tempDir.resolve("attach-all.zip.cdx.json");
+        assertTrue(Files.exists(bomFile), "external BOM should be written");
+        verify(projectHelper).attachArtifact(
+                eq(project), eq("cdx.json"), isNull(), eq(bomFile.toFile()));
     }
 
     private Path createJarWithEmbeddedSbom(String jarName, String content,
