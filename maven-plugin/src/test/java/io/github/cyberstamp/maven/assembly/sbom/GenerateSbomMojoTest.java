@@ -354,6 +354,32 @@ class GenerateSbomMojoTest {
                 any(), any(String.class), any(), any(File.class));
     }
 
+    @Test
+    void productInfoAppliedToMainComponent() throws Exception {
+        Files.writeString(inputDir.resolve("data.txt"), "hello");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        ProductInfo info = new ProductInfo();
+        info.setCpe("cpe:2.3:a:example:test-app:1.0:*:*:*:*:*:*:*");
+        info.setPublisher("Acme Corp");
+        ProductInfo.Organization supplier = new ProductInfo.Organization();
+        supplier.setName("Acme Corp");
+        supplier.setUrl("https://acme.com");
+        info.setSupplier(supplier);
+
+        File output = tempDir.resolve("output.cdx.json").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        setField(mojo, "product", info);
+        mojo.execute();
+
+        Bom bom = BomReader.readBom(output);
+        Component main = bom.getMetadata().getComponent();
+        assertEquals("cpe:2.3:a:example:test-app:1.0:*:*:*:*:*:*:*", main.getCpe());
+        assertEquals("Acme Corp", main.getPublisher());
+        assertNotNull(main.getSupplier());
+        assertEquals("Acme Corp", main.getSupplier().getName());
+    }
+
     private Path createJarWithEmbeddedSbom(String relativePath, String content,
             String sbomGroup, String sbomName, String sbomVersion) throws Exception {
         Bom embeddedBom = new Bom();

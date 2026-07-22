@@ -18,6 +18,7 @@ import org.cyclonedx.model.Evidence;
 import org.cyclonedx.model.Hash;
 import org.cyclonedx.model.LicenseChoice;
 import org.cyclonedx.model.Metadata;
+import org.cyclonedx.model.OrganizationalEntity;
 import org.cyclonedx.model.component.evidence.Identity;
 import org.cyclonedx.model.component.evidence.Method;
 import org.cyclonedx.model.component.evidence.Occurrence;
@@ -77,6 +78,7 @@ public class BomBuilder {
     private String toolHash;
     private String archiveType;
     private String classifier;
+    private ProductInfo product;
     private Map<ArtifactCoords, List<ArtifactCoords>> artifactDependencyGraph;
 
     /**
@@ -288,6 +290,14 @@ public class BomBuilder {
     }
 
     /**
+     * Sets user-configurable metadata (CPE, description, supplier, etc.)
+     * for the main BOM component.
+     */
+    public void setProduct(ProductInfo product) {
+        this.product = product;
+    }
+
+    /**
      * Sets the dependency graph collected from Maven dependency resolution.
      *
      * @param graph the dependency graph, keyed by parent artifact id
@@ -442,7 +452,42 @@ public class BomBuilder {
         if (projectLicenses != null) {
             main.setLicenses(projectLicenses);
         }
+        applyProductInfo(main);
         return main;
+    }
+
+    /**
+     * Applies user-configurable {@link ProductInfo} fields to the
+     * main component, if set.
+     */
+    private void applyProductInfo(Component main) {
+        if (product == null) {
+            return;
+        }
+        if (product.getCpe() != null) {
+            main.setCpe(product.getCpe());
+        }
+        if (product.getDescription() != null) {
+            main.setDescription(product.getDescription());
+        }
+        if (product.getPublisher() != null) {
+            main.setPublisher(product.getPublisher());
+        }
+        if (product.getCopyright() != null) {
+            main.setCopyright(product.getCopyright());
+        }
+        if (product.getSupplier() != null) {
+            OrganizationalEntity supplier = product.getSupplier().toModel();
+            if (supplier != null) {
+                main.setSupplier(supplier);
+            }
+        }
+        if (product.getManufacturer() != null) {
+            OrganizationalEntity manufacturer = product.getManufacturer().toModel();
+            if (manufacturer != null) {
+                main.setManufacturer(manufacturer);
+            }
+        }
     }
 
     /**

@@ -55,6 +55,7 @@ public class SbomGenerator {
     private final String embeddedSboms;
     private final boolean librariesOnly;
 
+    private ProductInfo product;
     private MavenLicenseResolver licenseResolver;
     private List<org.eclipse.aether.graph.Dependency> cachedManagedDeps;
 
@@ -74,6 +75,13 @@ public class SbomGenerator {
         this.failOnMissingLicense = failOnMissingLicense;
         this.embeddedSboms = embeddedSboms;
         this.librariesOnly = librariesOnly;
+    }
+
+    /**
+     * Sets user-configurable metadata for the main BOM component.
+     */
+    void setProduct(ProductInfo product) {
+        this.product = product;
     }
 
     /**
@@ -109,6 +117,7 @@ public class SbomGenerator {
                 project.getVersion()));
         builder.setClassifier(classifier);
         builder.setArchiveType(archiveType);
+        builder.setProduct(product);
         populateToolMetadata(builder);
 
         addToBom(content, builder);

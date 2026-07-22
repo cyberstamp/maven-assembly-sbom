@@ -805,6 +805,51 @@ class BomBuilderTest {
         return choice;
     }
 
+    @Test
+    void productInfoAppliedToMainComponent() {
+        ProductInfo info = new ProductInfo();
+        info.setCpe("cpe:2.3:a:example:myapp:1.0:*:*:*:*:*:*:*");
+        info.setDescription("Test application");
+        info.setPublisher("Acme Corp");
+        info.setCopyright("Copyright 2026 Acme Corp");
+        ProductInfo.Organization supplier = new ProductInfo.Organization();
+        supplier.setName("Acme Corp");
+        supplier.setUrl("https://acme.com");
+        info.setSupplier(supplier);
+        ProductInfo.Organization manufacturer = new ProductInfo.Organization();
+        manufacturer.setName("Acme Manufacturing");
+        info.setManufacturer(manufacturer);
+
+        BomBuilder builder = new BomBuilder("com.example", "my-app", "1.0", "dist");
+        builder.setProduct(info);
+        Bom bom = builder.build();
+
+        Component main = bom.getMetadata().getComponent();
+        assertEquals("cpe:2.3:a:example:myapp:1.0:*:*:*:*:*:*:*", main.getCpe());
+        assertEquals("Test application", main.getDescription());
+        assertEquals("Acme Corp", main.getPublisher());
+        assertEquals("Copyright 2026 Acme Corp", main.getCopyright());
+        assertNotNull(main.getSupplier());
+        assertEquals("Acme Corp", main.getSupplier().getName());
+        assertEquals(List.of("https://acme.com"), main.getSupplier().getUrls());
+        assertNotNull(main.getManufacturer());
+        assertEquals("Acme Manufacturing", main.getManufacturer().getName());
+    }
+
+    @Test
+    void nullProductInfoLeavesMainComponentUnchanged() {
+        BomBuilder builder = new BomBuilder("com.example", "my-app", "1.0", "dist");
+        Bom bom = builder.build();
+
+        Component main = bom.getMetadata().getComponent();
+        assertNull(main.getCpe());
+        assertNull(main.getDescription());
+        assertNull(main.getPublisher());
+        assertNull(main.getCopyright());
+        assertNull(main.getSupplier());
+        assertNull(main.getManufacturer());
+    }
+
     private static Component findByName(Bom bom, String name) {
         return bom.getComponents().stream()
                 .filter(c -> name.equals(c.getName()))
