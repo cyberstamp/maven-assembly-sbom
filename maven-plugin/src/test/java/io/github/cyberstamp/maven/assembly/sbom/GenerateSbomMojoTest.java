@@ -21,6 +21,7 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Build;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.MavenProjectHelper;
 import org.cyclonedx.model.Bom;
 import org.cyclonedx.model.Component;
 import org.cyclonedx.model.ExternalReference;
@@ -54,6 +55,9 @@ class GenerateSbomMojoTest {
 
     @Mock
     EffectiveModelResolver effectiveModelResolver;
+
+    @Mock
+    MavenProjectHelper projectHelper;
 
     private Path inputDir;
 
@@ -305,6 +309,51 @@ class GenerateSbomMojoTest {
         assertEquals("test-app", bom.getMetadata().getComponent().getName());
     }
 
+    @Test
+    void attachCallsProjectHelper() throws Exception {
+        Files.writeString(inputDir.resolve("data.txt"), "hello");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        File output = tempDir.resolve("output.cdx.json").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        setField(mojo, "attach", true);
+        mojo.execute();
+
+        assertTrue(output.exists());
+        verify(projectHelper).attachArtifact(
+                eq(project), eq("cdx.json"), eq("cyclonedx"), eq(output));
+    }
+
+    @Test
+    void attachWithXmlFormat() throws Exception {
+        Files.writeString(inputDir.resolve("data.txt"), "hello");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        File output = tempDir.resolve("output.cdx.xml").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        setField(mojo, "attach", true);
+        setField(mojo, "format", "xml");
+        mojo.execute();
+
+        assertTrue(output.exists());
+        verify(projectHelper).attachArtifact(
+                eq(project), eq("cdx.xml"), eq("cyclonedx"), eq(output));
+    }
+
+    @Test
+    void noAttachByDefault() throws Exception {
+        Files.writeString(inputDir.resolve("data.txt"), "hello");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        File output = tempDir.resolve("output.cdx.json").toFile();
+        GenerateSbomMojo mojo = createMojo(output);
+        mojo.execute();
+
+        assertTrue(output.exists());
+        verify(projectHelper, never()).attachArtifact(
+                any(), any(String.class), any(), any(File.class));
+    }
+
     private Path createJarWithEmbeddedSbom(String relativePath, String content,
             String sbomGroup, String sbomName, String sbomVersion) throws Exception {
         Bom embeddedBom = new Bom();
@@ -359,6 +408,7 @@ class GenerateSbomMojoTest {
         setField(mojo, "session", session);
         setField(mojo, "repoSystem", repoSystem);
         setField(mojo, "effectiveModelResolver", effectiveModelResolver);
+        setField(mojo, "projectHelper", projectHelper);
         setField(mojo, "inputDirectory", inputDir.toFile());
         setField(mojo, "outputFile", output);
         setField(mojo, "format", "json");
@@ -367,6 +417,7 @@ class GenerateSbomMojoTest {
         setField(mojo, "embeddedSboms", "merge");
         setField(mojo, "failOnMissingLicense", false);
         setField(mojo, "failOnDuplicateHash", true);
+        setField(mojo, "attach", false);
         return mojo;
     }
 

@@ -320,6 +320,7 @@ Scans an exploded directory (e.g., an exploded WAR produced by `maven-war-plugin
 | `failOnMissingLicense` | `false` | Fail the build if any library has no license info |
 | `failOnDuplicateHash` | `true` | Fail the build on duplicate artifact hashes |
 | `librariesOnly` | `false` | Exclude generic file components from the output |
+| `attach` | `false` | Attach the generated SBOM to the Maven project as an artifact with type `cdx.json` or `cdx.xml` and classifier `cyclonedx` |
 
 ### `merge` Goal
 

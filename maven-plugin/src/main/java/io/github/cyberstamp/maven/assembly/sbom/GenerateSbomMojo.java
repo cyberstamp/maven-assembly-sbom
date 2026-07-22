@@ -21,6 +21,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.MavenProjectHelper;
 import org.cyclonedx.model.Bom;
 import org.cyclonedx.model.Hash;
 import org.eclipse.aether.RepositorySystem;
@@ -51,35 +52,79 @@ public class GenerateSbomMojo extends AbstractMojo {
     @Component
     private EffectiveModelResolver effectiveModelResolver;
 
+    @Component
+    private MavenProjectHelper projectHelper;
+
+    /**
+     * The exploded directory to scan for artifact identification
+     * (e.g., an exploded WAR produced by {@code maven-war-plugin}).
+     */
     @Parameter(required = true, defaultValue = "${project.build.directory}/${project.build.finalName}")
     private File inputDirectory;
 
+    /** Path where the generated SBOM will be written. */
     @Parameter(defaultValue = "${project.build.directory}/bom.cdx.json")
     private File outputFile;
 
+    /** Output format: {@code "json"} or {@code "xml"}. */
     @Parameter(defaultValue = "json")
     private String format;
 
+    /** Whether to indent the output for readability. */
     @Parameter(defaultValue = "true")
     private boolean prettyPrint;
 
+    /**
+     * Hash algorithm for content hashes. Must be supported by both
+     * {@link java.security.MessageDigest} and the CycloneDX specification.
+     */
     @Parameter(defaultValue = "SHA-256")
     private String hashAlgorithm;
 
+    /**
+     * How to handle CycloneDX SBOM files found inside scanned
+     * artifacts: {@code "merge"} (import as nested sub-components),
+     * {@code "link"} (add an external reference), or {@code "ignore"}.
+     */
     @Parameter(defaultValue = "merge")
     private String embeddedSboms;
 
+    /**
+     * Comma-separated paths to external CycloneDX SBOMs to merge
+     * into the generated SBOM. Relative paths are resolved against
+     * the project base directory.
+     */
     @Parameter
     private String externalSboms;
 
+    /**
+     * When {@code true}, the build fails if any library component
+     * has no license information in its effective POM.
+     */
     @Parameter(defaultValue = "false")
     private boolean failOnMissingLicense;
 
+    /**
+     * When {@code true}, the build fails if two distinct artifacts
+     * have identical content hashes.
+     */
     @Parameter(defaultValue = "true")
     private boolean failOnDuplicateHash;
 
+    /**
+     * When {@code true}, generic file components are removed from
+     * the output, keeping only library components.
+     */
     @Parameter(defaultValue = "false")
     private boolean librariesOnly;
+
+    /**
+     * Attaches the generated SBOM as a Maven project artifact with
+     * type {@code cdx.json} or {@code cdx.xml} and classifier
+     * {@code cyclonedx}.
+     */
+    @Parameter(defaultValue = "false")
+    private boolean attach;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -137,6 +182,12 @@ public class GenerateSbomMojo extends AbstractMojo {
 
         int componentCount = bom.getComponents() != null ? bom.getComponents().size() : 0;
         getLog().info("SBOM with " + componentCount + " components written to " + outputFile);
+
+        if (attach) {
+            String type = "xml".equalsIgnoreCase(format) ? "cdx.xml" : "cdx.json";
+            projectHelper.attachArtifact(project, type, "cyclonedx", outputFile);
+            getLog().info("Attached SBOM artifact: type=" + type + ", classifier=cyclonedx");
+        }
     }
 
     private List<ArchiveContent.FileEntry> collectDirectoryEntries(
