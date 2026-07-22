@@ -1779,6 +1779,31 @@ class SbomContainerDescriptorHandlerTest {
                 eq(project), eq("cdx.json"), isNull(), eq(bomFile.toFile()));
     }
 
+    @Test
+    void productInfoAppliedToMainComponent() throws Exception {
+        ProductInfo info = new ProductInfo();
+        info.setCpe("cpe:2.3:a:example:test-app:1.0:*:*:*:*:*:*:*");
+        info.setDescription("Test distribution");
+        handler.setProduct(info);
+        handler.setOutputMode("external");
+        when(project.getArtifacts()).thenReturn(Set.of());
+
+        Path archivePath = tempDir.resolve("product-info.zip");
+        ZipArchiver archiver = new ZipArchiver();
+        archiver.setDestFile(archivePath.toFile());
+        Path props = createTestFile("pi-data.txt", "data");
+        archiver.addFile(props.toFile(), "base/data.txt");
+        handler.finalizeArchiveCreation(archiver);
+        archiver.createArchive();
+
+        Path bomFile = tempDir.resolve("product-info.zip.cdx.json");
+        assertTrue(Files.exists(bomFile));
+        Bom bom = BomReader.readBom(bomFile.toFile());
+        Component main = bom.getMetadata().getComponent();
+        assertEquals("cpe:2.3:a:example:test-app:1.0:*:*:*:*:*:*:*", main.getCpe());
+        assertEquals("Test distribution", main.getDescription());
+    }
+
     private Path createJarWithEmbeddedSbom(String jarName, String content,
             String sbomGroup, String sbomName, String sbomVersion) throws Exception {
         Bom embeddedBom = new Bom();

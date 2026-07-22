@@ -77,6 +77,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     private String externalSboms;
     private boolean librariesOnly;
     private boolean attach;
+    private ProductInfo product;
 
     private boolean includeBaseDir;
     private String assemblyId;
@@ -139,6 +140,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
                     messageDigest, bomHashAlgorithm,
                     failOnDuplicateHash, failOnMissingLicense, embeddedSboms,
                     librariesOnly);
+            generator.setProduct(product);
             Bom bom = generator.generate(entries, baseDirPrefix, externalBomList,
                     assemblyId, classifier, detectArchiveType(archiver));
 
@@ -951,5 +953,14 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     @SuppressWarnings("unused")
     public void setAttach(boolean attach) {
         this.attach = attach;
+    }
+
+    /**
+     * Sets user-configurable metadata (CPE, description, supplier,
+     * manufacturer, publisher, copyright) for the main BOM component.
+     */
+    @SuppressWarnings("unused")
+    public void setProduct(ProductInfo product) {
+        this.product = product;
     }
 }

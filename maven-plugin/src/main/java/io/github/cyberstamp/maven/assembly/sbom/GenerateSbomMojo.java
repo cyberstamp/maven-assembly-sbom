@@ -126,6 +126,13 @@ public class GenerateSbomMojo extends AbstractMojo {
     @Parameter(defaultValue = "false")
     private boolean attach;
 
+    /**
+     * User-configurable metadata (CPE, description, supplier,
+     * manufacturer, publisher, copyright) for the main BOM component.
+     */
+    @Parameter
+    private ProductInfo product;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (!inputDirectory.isDirectory()) {
@@ -167,6 +174,7 @@ public class GenerateSbomMojo extends AbstractMojo {
                 messageDigest, bomHashAlgorithm,
                 failOnDuplicateHash, failOnMissingLicense, embeddedSboms,
                 librariesOnly);
+        generator.setProduct(product);
         Bom bom = generator.generate(entries, null, externalBomList,
                 null, null, project.getPackaging());
 

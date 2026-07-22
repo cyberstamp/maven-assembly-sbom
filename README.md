@@ -135,8 +135,46 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 | `externalSboms` | _(none)_ | Comma-separated list of file paths to external CycloneDX SBOMs to merge into the distribution SBOM. Relative paths are resolved against the project base directory. External SBOM component hashes also participate in archive entry matching |
 | `librariesOnly` | `false` | When `true`, generic file components are removed from the generated SBOM, keeping only library components (Maven, npm, etc.). Filtering is applied after embedded and external SBOMs have been merged, so files recognized as libraries by those SBOMs are retained |
 | `attach` | `false` | When `true`, the generated SBOM is attached to the Maven project as an artifact. The attached artifact has the same groupId, artifactId, classifier, and version as the distribution archive but a different type (`cdx.json` or `cdx.xml`). Requires `outputMode` to be `external` or `all`. If the Maven Assembly Plugin's own `attach` is `false`, the SBOM is not attached either |
+| `product` | _(none)_ | User-configurable metadata for the main BOM component. See [Product](#product) below |
 
 The generator reads `includeBaseDirectory` from the assembly descriptor. When it is `true`, the base directory prefix is stripped from file paths in the BOM.
+
+#### Product
+
+The `product` element sets additional metadata on the main BOM component that cannot be derived from Maven project coordinates:
+
+```xml
+<containerDescriptorHandler>
+    <handlerName>sbom</handlerName>
+    <configuration>
+        <product>
+            <cpe>cpe:2.3:a:example:myapp:1.0:*:*:*:*:*:*:*</cpe>
+            <description>My application distribution</description>
+            <supplier>
+                <name>Acme Corp</name>
+                <url>https://acme.com</url>
+            </supplier>
+            <manufacturer>
+                <name>Acme Manufacturing</name>
+                <url>https://manufacturing.acme.com</url>
+            </manufacturer>
+            <publisher>Acme Corp</publisher>
+            <copyright>Copyright 2026 Acme Corp</copyright>
+        </product>
+    </configuration>
+</containerDescriptorHandler>
+```
+
+| Field | Description |
+|---|---|
+| `cpe` | [CPE](https://nvd.nist.gov/products/cpe) 2.2 or 2.3 identifier |
+| `description` | Free-text description |
+| `supplier/name`, `supplier/url` | Organization that supplied the component |
+| `manufacturer/name`, `manufacturer/url` | Organization that manufactured the component |
+| `publisher` | Publisher name |
+| `copyright` | Copyright text |
+
+All fields are optional. The same `product` element is available on the [`generate` goal](#generate-goal).
 
 ### Output Location
 
@@ -321,6 +359,7 @@ Scans an exploded directory (e.g., an exploded WAR produced by `maven-war-plugin
 | `failOnDuplicateHash` | `true` | Fail the build on duplicate artifact hashes |
 | `librariesOnly` | `false` | Exclude generic file components from the output |
 | `attach` | `false` | Attach the generated SBOM to the Maven project as an artifact with type `cdx.json` or `cdx.xml` and classifier `cyclonedx` |
+| `product` | _(none)_ | User-configurable metadata for the main BOM component (CPE, description, supplier, manufacturer, publisher, copyright). See [Product](#product) |
 
 ### `merge` Goal
 
