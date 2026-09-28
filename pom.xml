@@ -4,7 +4,7 @@
 
     <groupId>dev.cyberstamp.maven.assembly.sbom</groupId>
     <artifactId>assembly-sbom-parent</artifactId>
-    <version>0.1.8-SNAPSHOT</version>
+    <version>0.1.8</version>
     <packaging>pom</packaging>
 
     <name>Assembly SBOM Parent</name>
@@ -20,7 +20,7 @@
         <connection>scm:git:git://github.com/cyberstamp/maven-assembly-sbom.git</connection>
         <developerConnection>scm:git:ssh://github.com/cyberstamp/maven-assembly-sbom.git</developerConnection>
         <url>https://github.com/cyberstamp/maven-assembly-sbom</url>
-      <tag>HEAD</tag>
+      <tag>0.1.8</tag>
   </scm>
     <developers>
         <developer>
