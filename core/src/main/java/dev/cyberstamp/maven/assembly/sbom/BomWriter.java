@@ -75,6 +75,8 @@ public final class BomWriter {
     }
 
     private static void setSerialNumber(Bom bom, Version schemaVersion) {
+        schemaVersion = resolveVersion(schemaVersion);
+        bom.setSerialNumber(null);
         final String json;
         try {
             json = BomGeneratorFactory.createJson(schemaVersion, bom).toJsonString(false);

@@ -3,6 +3,7 @@ package dev.cyberstamp.maven.assembly.sbom;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
 
 import org.cyclonedx.exception.ParseException;
 import org.cyclonedx.model.Bom;
@@ -40,6 +41,16 @@ public final class BomReader {
             log.warn("Failed to parse SBOM file {}", file, e);
             return null;
         }
+    }
+
+    /**
+     * Parses a CycloneDX BOM from a path on disk.
+     *
+     * @param path the BOM file path (JSON or XML)
+     * @return the parsed BOM, or {@code null} if parsing fails
+     */
+    public static Bom readBom(Path path) {
+        return path != null ? readBom(path.toFile()) : null;
     }
 
     /**
