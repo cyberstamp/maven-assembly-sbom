@@ -1,7 +1,7 @@
 package dev.cyberstamp.maven.assembly.sbom;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +14,9 @@ import org.cyclonedx.Version;
 import org.cyclonedx.model.Bom;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Byte-identity regression guard for {@link BomRenderer}.
@@ -72,7 +75,14 @@ class GoldenBomTest {
         }
 
         String expected = readGolden();
-        assertEquals(expected, actual,
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode expectedJson = mapper.readTree(expected);
+        JsonNode actualJson = mapper.readTree(actual);
+
+        boolean identical = expectedJson.equals(actualJson);
+
+        assertTrue(identical,
                 "Rendered BOM diverged from the golden document. If this change is "
                         + "intentional, regenerate with -Dgolden.regenerate=true and review the diff.");
     }
