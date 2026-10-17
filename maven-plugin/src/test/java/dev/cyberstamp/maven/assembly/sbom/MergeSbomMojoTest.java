@@ -1,6 +1,10 @@
 package dev.cyberstamp.maven.assembly.sbom;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import java.io.File;
 import java.lang.reflect.Field;
@@ -8,17 +12,29 @@ import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.MavenProjectHelper;
 import org.cyclonedx.model.Bom;
 import org.cyclonedx.model.Component;
 import org.cyclonedx.model.Dependency;
 import org.cyclonedx.model.Metadata;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+@ExtendWith(MockitoExtension.class)
 class MergeSbomMojoTest {
 
     @TempDir
     Path tempDir;
+
+    @Mock
+    MavenProject project;
+
+    @Mock
+    MavenProjectHelper projectHelper;
 
     @Test
     void flatMergeAddsComponentsAtTopLevel() throws Exception {
@@ -161,6 +177,51 @@ class MergeSbomMojoTest {
         assertEquals(2, libA.getComponents().size());
     }
 
+    @Test
+    void attachCallsProjectHelper() throws Exception {
+        Bom baseBom = buildMavenBom();
+        File base = writeBom(baseBom, "base.cdx.json");
+        File output = tempDir.resolve("merged.cdx.json").toFile();
+
+        MergeSbomMojo mojo = createMojo(base, List.of(), output, false);
+        setField(mojo, "attach", true);
+        mojo.execute();
+
+        assertTrue(output.exists());
+        verify(projectHelper).attachArtifact(
+                eq(project), eq("cdx.json"), eq("cyclonedx"), eq(output));
+    }
+
+    @Test
+    void attachWithXmlFormat() throws Exception {
+        Bom baseBom = buildMavenBom();
+        File base = writeBom(baseBom, "base.cdx.xml");
+        File output = tempDir.resolve("merged.cdx.xml").toFile();
+
+        MergeSbomMojo mojo = createMojo(base, List.of(), output, false);
+        setField(mojo, "attach", true);
+        setField(mojo, "format", "xml");
+        mojo.execute();
+
+        assertTrue(output.exists());
+        verify(projectHelper).attachArtifact(
+                eq(project), eq("cdx.xml"), eq("cyclonedx"), eq(output));
+    }
+
+    @Test
+    void noAttachByDefault() throws Exception {
+        Bom baseBom = buildMavenBom();
+        File base = writeBom(baseBom, "base.cdx.json");
+        File output = tempDir.resolve("merged.cdx.json").toFile();
+
+        MergeSbomMojo mojo = createMojo(base, List.of(), output, false);
+        mojo.execute();
+
+        assertTrue(output.exists());
+        verify(projectHelper, never()).attachArtifact(
+                any(), any(String.class), any(), any(File.class));
+    }
+
     private Bom buildMavenBom() {
         Bom bom = new Bom();
         Metadata metadata = new Metadata();
@@ -206,6 +267,8 @@ class MergeSbomMojoTest {
     private MergeSbomMojo createMojo(File baseBom, List<File> mergeBoms, File outputFile,
             boolean nested) {
         MergeSbomMojo mojo = new MergeSbomMojo();
+        setField(mojo, "project", project);
+        setField(mojo, "projectHelper", projectHelper);
         setField(mojo, "baseSbom", baseBom);
         setField(mojo, "externalSboms", mergeBoms);
         setField(mojo, "outputFile", outputFile);

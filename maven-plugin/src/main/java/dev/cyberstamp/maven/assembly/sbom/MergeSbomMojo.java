@@ -5,9 +5,12 @@ import java.util.List;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.MavenProjectHelper;
 import org.cyclonedx.exception.GeneratorException;
 import org.cyclonedx.model.Bom;
 
@@ -42,6 +45,12 @@ import org.cyclonedx.model.Bom;
  */
 @Mojo(name = "merge", defaultPhase = LifecyclePhase.PREPARE_PACKAGE)
 public class MergeSbomMojo extends AbstractMojo {
+
+    @Parameter(defaultValue = "${project}", readonly = true)
+    private MavenProject project;
+
+    @Component
+    private MavenProjectHelper projectHelper;
 
     /**
      * Path to the base CycloneDX BOM file into which other BOMs will be merged.
@@ -89,6 +98,14 @@ public class MergeSbomMojo extends AbstractMojo {
      */
     @Parameter
     private String parentBomRef;
+
+    /**
+     * Attaches the merged SBOM as a Maven project artifact with
+     * type {@code cdx.json} or {@code cdx.xml} and classifier
+     * {@code cyclonedx}.
+     */
+    @Parameter(defaultValue = "false")
+    private boolean attach;
 
     /**
      * CycloneDX schema version to use for SBOM output, e.g. {@code "1.5"} or
@@ -157,5 +174,11 @@ public class MergeSbomMojo extends AbstractMojo {
         }
 
         getLog().info("Merged BOM written to " + outputFile);
+
+        if (attach) {
+            String type = "xml".equalsIgnoreCase(format) ? "cdx.xml" : "cdx.json";
+            projectHelper.attachArtifact(project, type, "cyclonedx", outputFile);
+            getLog().info("Attached merged SBOM artifact: type=" + type + ", classifier=cyclonedx");
+        }
     }
 }

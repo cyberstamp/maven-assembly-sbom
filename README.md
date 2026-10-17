@@ -300,6 +300,7 @@ Combines multiple CycloneDX SBOMs into a single BOM. This is useful when a proje
 | `prettyPrint` | `true` | Whether to indent the JSON output |
 | `nested` | `false` | When `false`, external components are added as top-level components (flat merge). When `true`, they are nested as sub-components of the parent component |
 | `parentBomRef` | _(auto-detected)_ | Only used when `nested` is `true`. The `bom-ref` of the component to nest external components under. Defaults to the base BOM's `metadata.component.bomRef` |
+| `attach` | `false` | Attach the merged SBOM to the Maven project as an artifact with type `cdx.json` or `cdx.xml` and classifier `cyclonedx` |
 | `schemaVersion` | _(latest)_ | CycloneDX schema version to use for the merged SBOM output, e.g. `1.5` or `1.6`. Defaults to the latest version supported by the integrated CycloneDX Java library |
 
 By default, external SBOM components are added as top-level components alongside the base BOM's components (flat merge). This is appropriate when the external components are peers of the base components (e.g., npm dependencies alongside Maven dependencies in a WAR). Set `nested` to `true` to nest them as sub-components of the parent component instead, which is appropriate when the external SBOM describes contents _inside_ a specific artifact. Dependency entries from external SBOMs are always imported into the merged BOM's dependency section.
