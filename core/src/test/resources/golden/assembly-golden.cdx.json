@@ -1,7 +1,7 @@
 {
   "bomFormat" : "CycloneDX",
   "specVersion" : "1.6",
-  "serialNumber" : "urn:uuid:a6fd078f-53ca-3b74-9005-dfdbd7c2af9a",
+  "serialNumber" : "urn:uuid:95189c68-7153-373c-928f-c9367a40985d",
   "version" : 1,
   "metadata" : {
     "timestamp" : "2023-11-14T22:13:20Z",
@@ -111,6 +111,7 @@
                 "methods" : [
                   {
                     "technique" : "manifest-analysis",
+                    "confidence" : 1.0,
                     "value" : "maven-pom-analysis"
                   }
                 ]
@@ -132,6 +133,7 @@
             "methods" : [
               {
                 "technique" : "manifest-analysis",
+                "confidence" : 1.0,
                 "value" : "maven-pom-analysis"
               }
             ]
@@ -173,6 +175,7 @@
             "methods" : [
               {
                 "technique" : "manifest-analysis",
+                "confidence" : 1.0,
                 "value" : "maven-pom-analysis"
               }
             ]

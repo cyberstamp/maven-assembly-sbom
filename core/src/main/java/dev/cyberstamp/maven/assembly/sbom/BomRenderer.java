@@ -240,6 +240,7 @@ public class BomRenderer {
         identity.setField(Identity.Field.PURL);
         identity.setConfidence(1.0);
         Method method = new Method();
+        method.setConfidence(1.0);
         method.setTechnique(Method.Technique.MANIFEST_ANALYSIS);
         method.setValue("maven-pom-analysis");
         identity.setMethods(List.of(method));
