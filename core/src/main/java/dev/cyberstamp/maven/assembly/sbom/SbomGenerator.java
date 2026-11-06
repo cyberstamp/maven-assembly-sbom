@@ -59,6 +59,7 @@ public class SbomGenerator {
 
     private ProductInfo product;
     private boolean identityEvidence = true;
+    private RemoteChecksumResolver remoteChecksumResolver;
     private LicenseEnrichment licenseEnrichment;
     private List<org.eclipse.aether.graph.Dependency> cachedManagedDeps;
     private ArchiveAnalyzer lastAnalyzer;
@@ -102,6 +103,17 @@ public class SbomGenerator {
      */
     void setIdentityEvidence(boolean identityEvidence) {
         this.identityEvidence = identityEvidence;
+    }
+
+    /**
+     * Sets the resolver used to identify otherwise-unmatched (e.g.
+     * non-Maven-built) archive entries by remote checksum lookup.
+     *
+     * @param remoteChecksumResolver the resolver, or {@code null} to disable
+     *        remote checksum lookup
+     */
+    void setRemoteChecksumResolver(RemoteChecksumResolver remoteChecksumResolver) {
+        this.remoteChecksumResolver = remoteChecksumResolver;
     }
 
     /**
@@ -175,7 +187,7 @@ public class SbomGenerator {
         lastAnalyzer = new ArchiveAnalyzer(
                 effectiveModelResolver, repoSystem,
                 project, session, messageDigest, failOnDuplicateHash,
-                externalBoms, detectEmbeddedSboms);
+                externalBoms, detectEmbeddedSboms, remoteChecksumResolver);
         lastAnalyzer.setIdentityEvidence(identityEvidence);
         return lastAnalyzer.analyze(entries, baseDirPrefix);
     }

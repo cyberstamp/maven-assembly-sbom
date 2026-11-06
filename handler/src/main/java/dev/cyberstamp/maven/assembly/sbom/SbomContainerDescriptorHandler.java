@@ -26,6 +26,10 @@ import org.apache.maven.plugins.assembly.model.Assembly;
 import org.apache.maven.plugins.assembly.model.io.xpp3.AssemblyXpp3Reader;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
+import org.apache.maven.settings.Server;
+import org.apache.maven.settings.crypto.DefaultSettingsDecryptionRequest;
+import org.apache.maven.settings.crypto.SettingsDecrypter;
+import org.apache.maven.settings.crypto.SettingsDecryptionResult;
 import org.codehaus.plexus.archiver.ArchiveEntry;
 import org.codehaus.plexus.archiver.Archiver;
 import org.codehaus.plexus.archiver.ArchiverException;
@@ -74,6 +78,9 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     @Inject
     private MavenProjectHelper projectHelper;
 
+    @Inject
+    private SettingsDecrypter settingsDecrypter;
+
     private String format = "json";
     private String outputPath = "bom.cdx.json";
     private String outputMode = "embedded";
@@ -92,6 +99,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     private boolean librariesOnly;
     private boolean attach;
     private ProductInfo product;
+    private RemoteArtifactLookup remoteLookup;
 
     private boolean includeBaseDir;
     private String assemblyId;
@@ -157,6 +165,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
                     librariesOnly, schemaVersion);
             generator.setProduct(product);
             generator.setIdentityEvidence(identityEvidence);
+            generator.setRemoteChecksumResolver(buildRemoteChecksumResolver());
             Bom bom = generator.generate(entries, baseDirPrefix, externalBomList,
                     assemblyId, classifier, detectArchiveType(archiver));
 
@@ -256,6 +265,52 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
             return false;
         }
         return true;
+    }
+
+    /**
+     * Builds the remote checksum lookup resolver from {@link #remoteLookup},
+     * resolving any {@code settings.xml} server credentials it references.
+     *
+     * @return the resolver, or {@code null} if remote lookup is disabled or
+     *         not usable as configured
+     */
+    private RemoteChecksumResolver buildRemoteChecksumResolver() {
+        if (remoteLookup == null || !remoteLookup.isEnabled()) {
+            return null;
+        }
+        Credentials nexusCredentials = resolveCredentials(remoteLookup.getNexusServerId());
+        Credentials artifactoryCredentials = resolveCredentials(remoteLookup.getArtifactoryServerId());
+        return RemoteChecksumResolver.create(remoteLookup,
+                nexusCredentials.username(), nexusCredentials.password(),
+                artifactoryCredentials.username(), artifactoryCredentials.password())
+                .orElse(null);
+    }
+
+    private record Credentials(String username, String password) {
+        private static final Credentials NONE = new Credentials(null, null);
+    }
+
+    /**
+     * Resolves and decrypts the username/password of a {@code settings.xml}
+     * {@code <server>} entry.
+     *
+     * @param serverId the server id, or {@code null}/blank for anonymous access
+     * @return the decrypted credentials, or {@link Credentials#NONE} if no
+     *         server id is configured or no matching server is found
+     */
+    private Credentials resolveCredentials(String serverId) {
+        if (serverId == null || serverId.isBlank()) {
+            return Credentials.NONE;
+        }
+        Server server = session.getSettings().getServer(serverId);
+        if (server == null) {
+            log.warn("No <server> with id '{}' found in settings.xml; using anonymous access", serverId);
+            return Credentials.NONE;
+        }
+        SettingsDecryptionResult result = settingsDecrypter.decrypt(
+                new DefaultSettingsDecryptionRequest(server));
+        Server decrypted = result.getServer() != null ? result.getServer() : server;
+        return new Credentials(decrypted.getUsername(), decrypted.getPassword());
     }
 
     /**
@@ -1046,5 +1101,18 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     @SuppressWarnings("unused")
     public void setProduct(ProductInfo product) {
         this.product = product;
+    }
+
+    /**
+     * Sets the settings for identifying non-Maven-built archive entries
+     * (e.g. jars built with Gradle or Ant) by looking up their SHA-1
+     * checksum against Maven Central and/or an internal Nexus or
+     * Artifactory instance. Disabled by default.
+     *
+     * @param remoteLookup the remote lookup settings
+     */
+    @SuppressWarnings("unused")
+    public void setRemoteLookup(RemoteArtifactLookup remoteLookup) {
+        this.remoteLookup = remoteLookup;
     }
 }

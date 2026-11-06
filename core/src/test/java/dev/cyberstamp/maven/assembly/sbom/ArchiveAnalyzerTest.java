@@ -5,6 +5,8 @@ import static org.mockito.Mockito.*;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +35,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.sun.net.httpserver.HttpServer;
 
 @ExtendWith(MockitoExtension.class)
 class ArchiveAnalyzerTest {
@@ -1202,5 +1206,80 @@ class ArchiveAnalyzerTest {
                 .findFirst().orElseThrow();
         assertEquals(Identification.hashMatch(), extra.identification(),
                 "reclassification must carry the hash match with the moved entry");
+    }
+
+    @Test
+    void unmatchedJarIdentifiedViaRemoteChecksumLookup() throws Exception {
+        Path jar = createTestJar("gradle-built-1.0.jar", "non-maven-content");
+        HttpServer stub = startStubChecksumServer(
+                "{\"items\":[{\"group\":\"org.gradle.example\",\"name\":\"gradle-built\",\"version\":\"1.0\"}]}");
+        try {
+            RemoteChecksumResolver resolver = createResolver(stub, List.of("**/*.jar"), List.of());
+            ArchiveAnalyzer analyzer = createAnalyzerWithRemoteLookup(resolver);
+
+            AssemblyComponents model = analyzer.analyze(List.of(
+                    new FileEntry("lib/gradle-built-1.0.jar",
+                            SbomUtils.computeHash(digest, jar), jar.toFile())),
+                    null);
+
+            List<PackageComponent> packages = extractPackageComponents(model);
+            assertEquals(1, packages.size());
+            ArtifactCoords coords = (ArtifactCoords) packages.get(0).ref();
+            assertEquals(ArtifactCoords.of("org.gradle.example", "gradle-built", "1.0"), coords);
+            assertEquals(Identification.remoteChecksumLookup(), packages.get(0).identification());
+            assertEquals(0, extractFileComponents(model).size());
+        } finally {
+            stub.stop(0);
+        }
+    }
+
+    @Test
+    void unmatchedJarExcludedFromRemoteLookupStaysFileComponent() throws Exception {
+        Path jar = createTestJar("excluded-1.0.jar", "non-maven-content-2");
+        HttpServer stub = startStubChecksumServer(
+                "{\"items\":[{\"group\":\"org.gradle.example\",\"name\":\"excluded\",\"version\":\"1.0\"}]}");
+        try {
+            RemoteChecksumResolver resolver = createResolver(
+                    stub, List.of("**/*.jar"), List.of("**/excluded-*.jar"));
+            ArchiveAnalyzer analyzer = createAnalyzerWithRemoteLookup(resolver);
+
+            AssemblyComponents model = analyzer.analyze(List.of(
+                    new FileEntry("lib/excluded-1.0.jar",
+                            SbomUtils.computeHash(digest, jar), jar.toFile())),
+                    null);
+
+            assertEquals(0, extractPackageComponents(model).size());
+            assertEquals(1, extractFileComponents(model).size());
+        } finally {
+            stub.stop(0);
+        }
+    }
+
+    private HttpServer startStubChecksumServer(String responseBody) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/service/rest/v1/search", exchange -> {
+            byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        return server;
+    }
+
+    private RemoteChecksumResolver createResolver(HttpServer stub, List<String> includes, List<String> excludes) {
+        RemoteArtifactLookup config = new RemoteArtifactLookup();
+        config.setEnabled(true);
+        config.setCentral(false);
+        config.setIncludes(includes);
+        config.setExcludes(excludes);
+        config.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort());
+        return RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+    }
+
+    private ArchiveAnalyzer createAnalyzerWithRemoteLookup(RemoteChecksumResolver resolver) {
+        return new ArchiveAnalyzer(
+                effectiveModelResolver, repoSystem, project, session, digest,
+                false, List.of(), true, resolver);
     }
 }
