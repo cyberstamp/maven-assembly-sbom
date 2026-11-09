@@ -52,7 +52,6 @@ final class RemoteCoordinatesResolver {
     private final Map<String, Optional<ArtifactCoords>> cache = new HashMap<>();
 
     private int callsUsed;
-    private boolean capWarningLogged;
 
     private RemoteCoordinatesResolver(List<PathMatcher> includeMatchers, List<PathMatcher> excludeMatchers,
             List<CoordinatesLookup> backends, int maxLookups, MessageDigest sha1Digest) {
@@ -225,8 +224,10 @@ final class RemoteCoordinatesResolver {
      *
      * @param entry the candidate file entry; must have a readable
      *        {@link FileEntry#sourceFile()}
-     * @return the matched coordinates, or empty if not found, the entry has
-     *         no readable source file, or the call budget is exhausted
+     * @return the matched coordinates, or empty if not found or the entry
+     *         has no readable source file
+     * @throws IllegalStateException if the {@code maxLookups} call budget is
+     *         exhausted
      */
     Optional<ArtifactCoords> resolve(FileEntry entry) {
         if (entry.sourceFile() == null || !entry.sourceFile().isFile()) {
@@ -251,12 +252,10 @@ final class RemoteCoordinatesResolver {
     private Optional<ArtifactCoords> lookupBackends(String sha1) {
         for (CoordinatesLookup backend : backends) {
             if (callsUsed >= maxLookups) {
-                if (!capWarningLogged) {
-                    log.warn("Remote lookup call budget ({}) exhausted; "
-                            + "remaining unmatched files will not be looked up", maxLookups);
-                    capWarningLogged = true;
-                }
-                return Optional.empty();
+                throw new IllegalStateException(
+                        "remoteMavenCoordinatesLookup.maxLookups (" + maxLookups + ") exhausted; "
+                                + "raise maxLookups, or narrow includes/excludes to reduce how many "
+                                + "unmatched files are eligible for remote lookup");
             }
             callsUsed++;
             Optional<ArtifactCoords> result = backend.lookup(sha1);

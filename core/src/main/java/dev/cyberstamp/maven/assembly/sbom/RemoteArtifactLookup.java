@@ -287,7 +287,8 @@ public class RemoteArtifactLookup {
     /**
      * Returns the maximum number of remote lookup HTTP calls performed during
      * a single SBOM generation run, regardless of how many files match the
-     * configured glob patterns. A safety net in addition to the glob filter.
+     * configured glob patterns. A safety net in addition to the glob filter:
+     * exceeding it fails the build (see {@link #setMaxLookups(int)}).
      *
      * @return the maximum number of lookups
      */
@@ -296,7 +297,10 @@ public class RemoteArtifactLookup {
     }
 
     /**
-     * Sets the maximum number of remote lookup HTTP calls per run.
+     * Sets the maximum number of remote lookup HTTP calls per run. Exceeding
+     * it fails the build, so it can't go unnoticed — raise this, or narrow
+     * {@link #setIncludes(List)}/{@link #setExcludes(List)}, if a build
+     * legitimately needs to look up more files than the default allows.
      *
      * @param maxLookups the maximum number of lookups
      */

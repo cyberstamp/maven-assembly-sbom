@@ -242,7 +242,7 @@ This is disabled by default and only ever runs as a last resort, after hash matc
 | `artifactoryUrl` | _(none)_ | Complete search URL of an internal JFrog Artifactory instance, with a literal `{sha1}` in place of the content hash. Setting this enables Artifactory lookup. See [Writing the search URL](#writing-the-search-url) below |
 | `artifactoryServerId` | _(none)_ | Id of a `<server>` in `settings.xml` whose username/password are sent as HTTP Basic auth to Artifactory. Omit for anonymous access |
 | `timeoutMillis` | `3000` | Per-request connect/response timeout |
-| `maxLookups` | `200` | Hard cap on the number of HTTP calls performed in a single run, regardless of how many files match `includes`. Once exhausted, remaining files are simply left unidentified (logged once as a warning) — the build does not fail |
+| `maxLookups` | `200` | Hard cap on the number of HTTP calls performed in a single run, regardless of how many files match `includes`. Exceeding it **fails the build** with a clear error — raise this, or narrow `includes`/`excludes`, if a build legitimately needs more lookups |
 
 Backends are tried in a fixed order — Maven Central, then Nexus, then Artifactory — stopping at the first match. Credentials are never written into the POM: `nexusServerId`/`artifactoryServerId` reference a `<server>` entry in `settings.xml` (optionally with an encrypted password, like any other Maven credential), resolved at build time. The same `remoteMavenCoordinatesLookup` element is available on the [`generate` goal](#generate-goal).
 

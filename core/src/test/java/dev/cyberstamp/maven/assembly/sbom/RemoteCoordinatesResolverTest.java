@@ -207,7 +207,7 @@ class RemoteCoordinatesResolverTest {
     }
 
     @Test
-    void stopsCallingBackendsOnceMaxLookupsIsExhausted() throws IOException {
+    void failsOnceMaxLookupsIsExhausted() throws IOException {
         AtomicInteger hits = new AtomicInteger();
         nexusServer = startServer("/service/rest/v1/search", hits, "{\"items\":[]}");
 
@@ -222,7 +222,9 @@ class RemoteCoordinatesResolverTest {
         RemoteCoordinatesResolver resolver = RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
 
         resolver.resolve(fileEntry("lib/a.jar", "content-a"));
-        resolver.resolve(fileEntry("lib/b.jar", "content-b"));
+        assertThrows(IllegalStateException.class,
+                () -> resolver.resolve(fileEntry("lib/b.jar", "content-b")),
+                "exhausting the lookup budget must fail loudly, not silently leave later files unidentified");
 
         assertEquals(1, hits.get(), "no backend call should be made once the lookup budget is exhausted");
     }
