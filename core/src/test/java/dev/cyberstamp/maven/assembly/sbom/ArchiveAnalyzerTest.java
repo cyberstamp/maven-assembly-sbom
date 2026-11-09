@@ -1273,7 +1273,8 @@ class ArchiveAnalyzerTest {
         config.setCentral(false);
         config.setIncludes(includes);
         config.setExcludes(excludes);
-        config.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort());
+        config.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort()
+                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
         return RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
     }
 

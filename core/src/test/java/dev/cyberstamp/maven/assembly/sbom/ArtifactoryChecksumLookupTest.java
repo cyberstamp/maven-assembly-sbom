@@ -20,6 +20,7 @@ class ArtifactoryChecksumLookupTest {
 
     private HttpServer server;
     private final AtomicReference<String> lastAuthHeader = new AtomicReference<>();
+    private final AtomicReference<String> lastQuery = new AtomicReference<>();
 
     @BeforeEach
     void startServer() throws IOException {
@@ -35,11 +36,28 @@ class ArtifactoryChecksumLookupTest {
     private void respondWith(int status, String body) {
         server.createContext("/api/search/checksum", exchange -> {
             lastAuthHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            lastQuery.set(exchange.getRequestURI().getQuery());
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status, bytes.length);
             exchange.getResponseBody().write(bytes);
             exchange.close();
         });
+    }
+
+    @Test
+    void substitutesSha1IntoConfiguredSearchUrlAndKeepsExtraParameters() {
+        respondWith(200, "{\"results\":[{\"uri\":\"https://artifactory.example.com/artifactory/api/storage/"
+                + "libs-release-local/org/apache/commons/commons-lang3/3.12.0/commons-lang3-3.12.0.jar\"}]}");
+        String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+        String searchUrl = baseUrl + "/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER
+                + "&repos=central,my-internal-repo";
+        ArtifactoryChecksumLookup artifactory = new ArtifactoryChecksumLookup(
+                HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, null);
+
+        Optional<ArtifactCoords> result = artifactory.lookup("abc123");
+
+        assertEquals(Optional.of(ArtifactCoords.of("org.apache.commons", "commons-lang3", "3.12.0")), result);
+        assertEquals("sha1=abc123&repos=central,my-internal-repo", lastQuery.get());
     }
 
     @Test
@@ -86,14 +104,16 @@ class ArtifactoryChecksumLookupTest {
 
     @Test
     void returnsEmptyWhenServerUnreachable() {
-        ArtifactoryChecksumLookup artifactory = new ArtifactoryChecksumLookup(
-                HttpClient.newHttpClient(), Duration.ofMillis(500), "http://127.0.0.1:1", null);
+        ArtifactoryChecksumLookup artifactory = new ArtifactoryChecksumLookup(HttpClient.newHttpClient(),
+                Duration.ofMillis(500),
+                "http://127.0.0.1:1/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER, null);
 
         assertTrue(artifactory.lookup("abc123").isEmpty());
     }
 
     private ArtifactoryChecksumLookup lookup(String authHeader) {
         String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-        return new ArtifactoryChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), baseUrl, authHeader);
+        String searchUrl = baseUrl + "/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER;
+        return new ArtifactoryChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
     }
 }

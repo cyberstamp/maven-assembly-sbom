@@ -115,20 +115,39 @@ public class RemoteArtifactLookup {
     }
 
     /**
-     * Returns the base URL of an internal Nexus Repository Manager 3 instance
-     * to query, or {@code null} if Nexus lookup is disabled.
+     * Returns the complete Nexus Repository Manager 3 search URL to query,
+     * containing a {@code {sha1}} placeholder, or {@code null} if Nexus
+     * lookup is disabled.
      *
-     * @return the Nexus base URL, or {@code null}
+     * @return the Nexus search URL, or {@code null}
      */
     public String getNexusUrl() {
         return nexusUrl;
     }
 
     /**
-     * Sets the base URL of a Nexus Repository Manager 3 instance (e.g.
-     * {@code https://nexus.example.com}). Setting this enables Nexus lookup.
+     * Sets the complete search URL of a Nexus Repository Manager 3 instance,
+     * with a literal {@code {sha1}} in place of the content hash, e.g.
+     * {@code https://nexus.example.com/service/rest/v1/search?sha1={sha1}}.
+     * Setting this enables Nexus lookup; {@code {sha1}} is substituted with
+     * the actual hash and the rest of the URL is used exactly as given.
      *
-     * @param nexusUrl the Nexus base URL
+     * <p>
+     * This is a full URL rather than just a server address so you can add
+     * Nexus's own search parameters — e.g. its {@code repository} filter, to
+     * restrict the search to one repository:
+     * {@code https://nexus.example.com/service/rest/v1/search?sha1={sha1}&repository=my-repo}.
+     * It also means that if Nexus ever changes its REST API path, only this
+     * setting needs updating, not the plugin itself.
+     * </p>
+     *
+     * <p>
+     * If the given value does not contain {@code {sha1}}, Nexus lookup is
+     * skipped with a warning — there is no default path to fall back to.
+     * </p>
+     *
+     * @param nexusUrl the complete Nexus search URL, containing a
+     *        {@code {sha1}} placeholder
      */
     public void setNexusUrl(String nexusUrl) {
         this.nexusUrl = nexusUrl;
@@ -155,21 +174,39 @@ public class RemoteArtifactLookup {
     }
 
     /**
-     * Returns the base URL of an internal Artifactory instance to query, or
-     * {@code null} if Artifactory lookup is disabled.
+     * Returns the complete Artifactory search URL to query, containing a
+     * {@code {sha1}} placeholder, or {@code null} if Artifactory lookup is
+     * disabled.
      *
-     * @return the Artifactory base URL, or {@code null}
+     * @return the Artifactory search URL, or {@code null}
      */
     public String getArtifactoryUrl() {
         return artifactoryUrl;
     }
 
     /**
-     * Sets the base URL of an Artifactory instance (e.g.
-     * {@code https://artifactory.example.com/artifactory}). Setting this
-     * enables Artifactory lookup.
+     * Sets the complete checksum search URL of an Artifactory instance, with
+     * a literal {@code {sha1}} in place of the content hash, e.g.
+     * {@code https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}}.
+     * Setting this enables Artifactory lookup; {@code {sha1}} is substituted
+     * with the actual hash and the rest of the URL is used exactly as given.
      *
-     * @param artifactoryUrl the Artifactory base URL
+     * <p>
+     * This is a full URL rather than just a server address so you can add
+     * Artifactory's own search parameters — e.g. its {@code repos} filter, to
+     * restrict the search to specific repositories:
+     * {@code https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}&repos=central,my-internal-repo}.
+     * It also means that if Artifactory ever changes its REST API path, only
+     * this setting needs updating, not the plugin itself.
+     * </p>
+     *
+     * <p>
+     * If the given value does not contain {@code {sha1}}, Artifactory lookup
+     * is skipped with a warning — there is no default path to fall back to.
+     * </p>
+     *
+     * @param artifactoryUrl the complete Artifactory search URL, containing
+     *        a {@code {sha1}} placeholder
      */
     public void setArtifactoryUrl(String artifactoryUrl) {
         this.artifactoryUrl = artifactoryUrl;

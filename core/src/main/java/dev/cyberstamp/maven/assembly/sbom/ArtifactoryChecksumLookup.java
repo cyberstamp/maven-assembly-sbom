@@ -9,8 +9,7 @@ import java.util.Optional;
 
 /**
  * Looks up Maven coordinates by SHA-1 against an internal JFrog Artifactory
- * instance, using its checksum search API
- * ({@code GET /api/search/checksum?sha1=...}).
+ * instance, using its checksum search API.
  *
  * <p>
  * Unlike Maven Central and Nexus, Artifactory's checksum search does not
@@ -19,28 +18,42 @@ import java.util.Optional;
  * that path by assuming the standard Maven2 repository layout:
  * {@code .../api/storage/<repoKey>/<groupPath>/<artifactId>/<version>/<file>}.
  * </p>
+ *
+ * <p>
+ * The configured URL must be a complete search request containing a literal
+ * {@code {sha1}} placeholder for the content hash (see {@link #PLACEHOLDER}),
+ * e.g.
+ * {@code https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}}.
+ * This is deliberately not derived from a bare base URL: the REST path and
+ * any extra filters (e.g. Artifactory's {@code repos} parameter) are under
+ * JFrog's control, and hardcoding them here could go stale. Requiring the
+ * full URL means an Artifactory-side API change only needs a config update,
+ * not a new plugin release.
+ * </p>
  */
 final class ArtifactoryChecksumLookup implements ChecksumArtifactLookup {
 
+    /**
+     * Literal marker substituted with the content hash in the configured
+     * search URL.
+     */
+    static final String PLACEHOLDER = "{sha1}";
+
     private final HttpClient client;
     private final Duration timeout;
-    private final String baseUrl;
+    private final String searchUrlTemplate;
     private final String basicAuthHeader;
 
-    ArtifactoryChecksumLookup(HttpClient client, Duration timeout, String baseUrl, String basicAuthHeader) {
+    ArtifactoryChecksumLookup(HttpClient client, Duration timeout, String searchUrlTemplate, String basicAuthHeader) {
         this.client = client;
         this.timeout = timeout;
-        this.baseUrl = stripTrailingSlash(baseUrl);
+        this.searchUrlTemplate = searchUrlTemplate;
         this.basicAuthHeader = basicAuthHeader;
-    }
-
-    private static String stripTrailingSlash(String url) {
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     @Override
     public Optional<ArtifactCoords> lookup(String sha1Hex) {
-        URI uri = URI.create(baseUrl + "/api/search/checksum?sha1=" + sha1Hex);
+        URI uri = URI.create(searchUrlTemplate.replace(PLACEHOLDER, sha1Hex));
         return HttpChecksumLookupSupport.get(client, uri, timeout, basicAuthHeader)
                 .flatMap(body -> MinimalJson.firstArrayObject(body, "results"))
                 .flatMap(result -> MinimalJson.stringField(result, "uri"))

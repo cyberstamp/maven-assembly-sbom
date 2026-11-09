@@ -221,9 +221,9 @@ This is disabled by default and only ever runs as a last resort, after hash matc
             <excludes>
                 <exclude>**/internal-*.jar</exclude>
             </excludes>
-            <nexusUrl>https://nexus.example.com</nexusUrl>
+            <nexusUrl>https://nexus.example.com/service/rest/v1/search?sha1={sha1}</nexusUrl>
             <nexusServerId>my-nexus</nexusServerId>
-            <artifactoryUrl>https://artifactory.example.com/artifactory</artifactoryUrl>
+            <artifactoryUrl>https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}</artifactoryUrl>
             <artifactoryServerId>my-artifactory</artifactoryServerId>
         </remoteLookup>
     </configuration>
@@ -236,14 +236,36 @@ This is disabled by default and only ever runs as a last resort, after hash matc
 | `includes` | `**/*.jar` | Glob patterns (matched against the archive-relative path) selecting which unmatched files are eligible for lookup. Narrow this to bound how many files can trigger a network call |
 | `excludes` | _(none)_ | Glob patterns excluding otherwise-matching files |
 | `central` | `false` | Whether to query the public Maven Central search API (`search.maven.org`); needs no configuration or credentials, but is opt-in since it is the only backend that leaves the build environment entirely |
-| `nexusUrl` | _(none)_ | Base URL of an internal Nexus Repository Manager **3** instance (e.g. `https://nexus.example.com`). Setting this enables Nexus lookup via its `/service/rest/v1/search?sha1=...` REST API |
+| `nexusUrl` | _(none)_ | Complete search URL of an internal Nexus Repository Manager **3** instance, with a literal `{sha1}` in place of the content hash. Setting this enables Nexus lookup. See [Writing the search URL](#writing-the-search-url) below |
 | `nexusServerId` | _(none)_ | Id of a `<server>` in `settings.xml` whose username/password are sent as HTTP Basic auth to Nexus. Omit for anonymous access |
-| `artifactoryUrl` | _(none)_ | Base URL of an internal JFrog Artifactory instance (e.g. `https://artifactory.example.com/artifactory`). Setting this enables Artifactory lookup via its `/api/search/checksum?sha1=...` API |
+| `artifactoryUrl` | _(none)_ | Complete search URL of an internal JFrog Artifactory instance, with a literal `{sha1}` in place of the content hash. Setting this enables Artifactory lookup. See [Writing the search URL](#writing-the-search-url) below |
 | `artifactoryServerId` | _(none)_ | Id of a `<server>` in `settings.xml` whose username/password are sent as HTTP Basic auth to Artifactory. Omit for anonymous access |
 | `timeoutMillis` | `3000` | Per-request connect/response timeout |
-| `maxLookups` | `200` | Hard cap on the number of HTTP calls performed in a single run, regardless of how many files match `includes` |
+| `maxLookups` | `200` | Hard cap on the number of HTTP calls performed in a single run, regardless of how many files match `includes`. Once exhausted, remaining files are simply left unidentified (logged once as a warning) — the build does not fail |
 
 Backends are tried in a fixed order — Maven Central, then Nexus, then Artifactory — stopping at the first match. Credentials are never written into the POM: `nexusServerId`/`artifactoryServerId` reference a `<server>` entry in `settings.xml` (optionally with an encrypted password, like any other Maven credential), resolved at build time. The same `remoteLookup` element is available on the [`generate` goal](#generate-goal).
+
+##### Writing the search URL
+
+`nexusUrl`/`artifactoryUrl` take the **complete search request**, not just a server address — write it exactly as you'd call it with `curl`, but with a literal `{sha1}` where the content hash goes. At lookup time, the plugin only substitutes `{sha1}` with the actual hash and calls the URL as-is; it never builds or guesses any part of the request itself.
+
+```xml
+<!-- Nexus 3: GET /service/rest/v1/search?sha1=... -->
+<nexusUrl>https://nexus.example.com/service/rest/v1/search?sha1={sha1}</nexusUrl>
+
+<!-- Artifactory: GET /api/search/checksum?sha1=... -->
+<artifactoryUrl>https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}</artifactoryUrl>
+```
+
+If you omit `{sha1}`, that backend is skipped with a warning — there's no default path to fall back to.
+
+This is deliberate, for two reasons:
+1. **You can add any extra query parameter your server supports**, like Nexus's `repository` filter or Artifactory's `repos` filter, to restrict the search to specific (groups of) repositories — just append it to the URL yourself:
+   ```xml
+   <nexusUrl>https://nexus.example.com/service/rest/v1/search?sha1={sha1}&amp;repository=my-repo</nexusUrl>
+   <artifactoryUrl>https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}&amp;repos=central,my-internal-repo</artifactoryUrl>
+   ```
+2. **It's resilient to future API changes.** If Nexus or Artifactory ever changes its REST path or parameter names in a later version, you only need to update this one setting — not wait for a new release of this plugin.
 
 ### Output Location
 

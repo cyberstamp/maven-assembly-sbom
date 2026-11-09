@@ -127,12 +127,25 @@ final class RemoteChecksumResolver {
             backends.add(new MavenCentralChecksumLookup(client, timeout));
         }
         if (isSet(config.getNexusUrl())) {
-            String auth = authHeader(nexusUsername, nexusPassword);
-            backends.add(new NexusChecksumLookup(client, timeout, config.getNexusUrl(), auth));
+            if (config.getNexusUrl().contains(NexusChecksumLookup.PLACEHOLDER)) {
+                String auth = authHeader(nexusUsername, nexusPassword);
+                backends.add(new NexusChecksumLookup(client, timeout, config.getNexusUrl(), auth));
+            } else {
+                log.warn("nexusUrl must be a complete search URL containing a {} placeholder "
+                        + "(e.g. https://nexus.example.com/service/rest/v1/search?sha1={}); "
+                        + "Nexus lookup will not run.", NexusChecksumLookup.PLACEHOLDER, NexusChecksumLookup.PLACEHOLDER);
+            }
         }
         if (isSet(config.getArtifactoryUrl())) {
-            String auth = authHeader(artifactoryUsername, artifactoryPassword);
-            backends.add(new ArtifactoryChecksumLookup(client, timeout, config.getArtifactoryUrl(), auth));
+            if (config.getArtifactoryUrl().contains(ArtifactoryChecksumLookup.PLACEHOLDER)) {
+                String auth = authHeader(artifactoryUsername, artifactoryPassword);
+                backends.add(new ArtifactoryChecksumLookup(client, timeout, config.getArtifactoryUrl(), auth));
+            } else {
+                log.warn("artifactoryUrl must be a complete search URL containing a {} placeholder "
+                        + "(e.g. https://artifactory.example.com/artifactory/api/search/checksum?sha1={}); "
+                        + "Artifactory lookup will not run.",
+                        ArtifactoryChecksumLookup.PLACEHOLDER, ArtifactoryChecksumLookup.PLACEHOLDER);
+            }
         }
         return backends;
     }

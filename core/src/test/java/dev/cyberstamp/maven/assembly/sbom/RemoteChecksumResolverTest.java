@@ -81,6 +81,30 @@ class RemoteChecksumResolverTest {
     }
 
     @Test
+    void nexusUrlWithoutSha1PlaceholderIsRejected() {
+        RemoteArtifactLookup config = new RemoteArtifactLookup();
+        config.setEnabled(true);
+        config.setIncludes(List.of("**/*.jar"));
+        config.setNexusUrl("http://127.0.0.1:1/service/rest/v1/search");
+
+        assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty(),
+                "a nexusUrl without a {sha1} placeholder has no default path to fall back to, "
+                        + "so Nexus must not be added as a usable backend");
+    }
+
+    @Test
+    void artifactoryUrlWithoutSha1PlaceholderIsRejected() {
+        RemoteArtifactLookup config = new RemoteArtifactLookup();
+        config.setEnabled(true);
+        config.setIncludes(List.of("**/*.jar"));
+        config.setArtifactoryUrl("http://127.0.0.1:1/api/search/checksum");
+
+        assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty(),
+                "an artifactoryUrl without a {sha1} placeholder has no default path to fall back to, "
+                        + "so Artifactory must not be added as a usable backend");
+    }
+
+    @Test
     void isCandidateHonorsIncludesAndExcludes() {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(true);
@@ -107,8 +131,10 @@ class RemoteChecksumResolverTest {
         config.setEnabled(true);
         config.setCentral(false);
         config.setIncludes(List.of("**/*.jar"));
-        config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort());
-        config.setArtifactoryUrl("http://127.0.0.1:" + artifactoryServer.getAddress().getPort());
+        config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort()
+                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
+        config.setArtifactoryUrl("http://127.0.0.1:" + artifactoryServer.getAddress().getPort()
+                + "/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER);
 
         RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
         FileEntry entry = fileEntry("lib/lib.jar", "content-a");
@@ -130,7 +156,8 @@ class RemoteChecksumResolverTest {
         config.setEnabled(true);
         config.setCentral(false);
         config.setIncludes(List.of("**/*.jar"));
-        config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort());
+        config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort()
+                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
 
         RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
         FileEntry first = fileEntry("lib/a.jar", "same-content");
@@ -151,7 +178,8 @@ class RemoteChecksumResolverTest {
         config.setEnabled(true);
         config.setCentral(false);
         config.setIncludes(List.of("**/*.jar"));
-        config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort());
+        config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort()
+                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
         config.setMaxLookups(1);
 
         RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();

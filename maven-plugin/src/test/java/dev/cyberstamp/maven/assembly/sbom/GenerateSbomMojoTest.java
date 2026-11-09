@@ -513,7 +513,8 @@ class GenerateSbomMojoTest {
             remoteLookup.setEnabled(true);
             remoteLookup.setCentral(false);
             remoteLookup.setIncludes(List.of("**/*.jar"));
-            remoteLookup.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort());
+            remoteLookup.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort()
+                    + "/service/rest/v1/search?sha1={sha1}");
 
             File output = tempDir.resolve("output.cdx.json").toFile();
             GenerateSbomMojo mojo = createMojo(output);

@@ -90,19 +90,24 @@ class NexusChecksumLookupTest {
 
     @Test
     void returnsEmptyWhenServerUnreachable() {
-        NexusChecksumLookup nexus = new NexusChecksumLookup(
-                HttpClient.newHttpClient(), Duration.ofMillis(500), "http://127.0.0.1:1", null);
+        NexusChecksumLookup nexus = new NexusChecksumLookup(HttpClient.newHttpClient(), Duration.ofMillis(500),
+                "http://127.0.0.1:1/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER, null);
 
         assertTrue(nexus.lookup("abc123").isEmpty());
     }
 
     @Test
-    void stripsTrailingSlashFromBaseUrl() {
+    void substitutesSha1IntoConfiguredSearchUrlAndKeepsExtraParameters() {
         respondWith(200, "{\"items\":[{\"group\":\"com.example\",\"name\":\"lib\",\"version\":\"2.0\"}]}");
-        NexusChecksumLookup nexus = new NexusChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5),
-                baseUrl() + "/", null);
+        String searchUrl = baseUrl() + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER
+                + "&repository=my-repo";
+        NexusChecksumLookup nexus = new NexusChecksumLookup(
+                HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, null);
 
-        assertEquals(Optional.of(ArtifactCoords.of("com.example", "lib", "2.0")), nexus.lookup("abc123"));
+        Optional<ArtifactCoords> result = nexus.lookup("abc123");
+
+        assertEquals(Optional.of(ArtifactCoords.of("com.example", "lib", "2.0")), result);
+        assertEquals("sha1=abc123&repository=my-repo", lastQuery.get());
     }
 
     private String baseUrl() {
@@ -110,6 +115,7 @@ class NexusChecksumLookupTest {
     }
 
     private NexusChecksumLookup lookup(String authHeader) {
-        return new NexusChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), baseUrl(), authHeader);
+        String searchUrl = baseUrl() + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER;
+        return new NexusChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
     }
 }
