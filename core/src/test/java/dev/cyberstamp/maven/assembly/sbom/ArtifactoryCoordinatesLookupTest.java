@@ -3,7 +3,9 @@ package dev.cyberstamp.maven.assembly.sbom;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -103,10 +105,12 @@ class ArtifactoryCoordinatesLookupTest {
     }
 
     @Test
-    void returnsEmptyWhenServerUnreachable() {
+    void returnsEmptyWhenServerUnreachable() throws IOException {
         ArtifactoryCoordinatesLookup artifactory = new ArtifactoryCoordinatesLookup(HttpClient.newHttpClient(),
                 Duration.ofMillis(500),
-                "http://127.0.0.1:1/api/search/checksum?sha1=" + ArtifactoryCoordinatesLookup.PLACEHOLDER, null);
+                "http://127.0.0.1:" + unreachablePort() + "/api/search/checksum?sha1="
+                        + ArtifactoryCoordinatesLookup.PLACEHOLDER,
+                null);
 
         assertTrue(artifactory.lookup("abc123").isEmpty());
     }
@@ -115,5 +119,15 @@ class ArtifactoryCoordinatesLookupTest {
         String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
         String searchUrl = baseUrl + "/api/search/checksum?sha1=" + ArtifactoryCoordinatesLookup.PLACEHOLDER;
         return new ArtifactoryCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
+    }
+
+    /**
+     * Returns a loopback port nothing is listening on, by briefly binding
+     * one and releasing it.
+     */
+    private static int unreachablePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
+            return socket.getLocalPort();
+        }
     }
 }

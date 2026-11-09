@@ -3,7 +3,9 @@ package dev.cyberstamp.maven.assembly.sbom;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -89,9 +91,11 @@ class NexusCoordinatesLookupTest {
     }
 
     @Test
-    void returnsEmptyWhenServerUnreachable() {
+    void returnsEmptyWhenServerUnreachable() throws IOException {
         NexusCoordinatesLookup nexus = new NexusCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofMillis(500),
-                "http://127.0.0.1:1/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER, null);
+                "http://127.0.0.1:" + unreachablePort() + "/service/rest/v1/search?sha1="
+                        + NexusCoordinatesLookup.PLACEHOLDER,
+                null);
 
         assertTrue(nexus.lookup("abc123").isEmpty());
     }
@@ -117,5 +121,19 @@ class NexusCoordinatesLookupTest {
     private NexusCoordinatesLookup lookup(String authHeader) {
         String searchUrl = baseUrl() + "/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER;
         return new NexusCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
+    }
+
+    /**
+     * Returns a loopback port nothing is listening on, by briefly binding
+     * one and releasing it. Deliberately not a low-numbered port like
+     * {@code 1}: those are "privileged" on Linux (require root to bind to),
+     * and some sandboxed/firewalled environments handle connection attempts
+     * to them differently (e.g. silently dropping instead of refusing),
+     * which could make this test flaky or slow depending on where it runs.
+     */
+    private static int unreachablePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
+            return socket.getLocalPort();
+        }
     }
 }

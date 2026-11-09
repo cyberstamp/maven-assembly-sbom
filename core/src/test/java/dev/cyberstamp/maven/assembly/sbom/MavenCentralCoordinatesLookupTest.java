@@ -3,7 +3,9 @@ package dev.cyberstamp.maven.assembly.sbom;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -72,10 +74,10 @@ class MavenCentralCoordinatesLookupTest {
     }
 
     @Test
-    void returnsEmptyWhenServerUnreachable() {
+    void returnsEmptyWhenServerUnreachable() throws IOException {
         MavenCentralCoordinatesLookup central = new MavenCentralCoordinatesLookup(
                 HttpClient.newHttpClient(), Duration.ofMillis(500),
-                "http://127.0.0.1:1/solrsearch/select?q=1:%s&rows=1&wt=json");
+                "http://127.0.0.1:" + unreachablePort() + "/solrsearch/select?q=1:%s&rows=1&wt=json");
 
         assertTrue(central.lookup("abc123").isEmpty());
     }
@@ -84,5 +86,19 @@ class MavenCentralCoordinatesLookupTest {
         String template = "http://127.0.0.1:" + server.getAddress().getPort()
                 + "/solrsearch/select?q=1:%s&rows=1&wt=json";
         return new MavenCentralCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), template);
+    }
+
+    /**
+     * Returns a loopback port nothing is listening on, by briefly binding
+     * one and releasing it. Deliberately not a low-numbered port like
+     * {@code 1}: those are "privileged" on Linux (require root to bind to),
+     * and some sandboxed/firewalled environments handle connection attempts
+     * to them differently (e.g. silently dropping instead of refusing),
+     * which could make this test flaky or slow depending on where it runs.
+     */
+    private static int unreachablePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
+            return socket.getLocalPort();
+        }
     }
 }

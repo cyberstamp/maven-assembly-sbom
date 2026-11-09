@@ -85,7 +85,7 @@ class RemoteCoordinatesResolverTest {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(true);
         config.setIncludes(List.of("**/*.jar"));
-        config.setNexusUrl("http://127.0.0.1:1/service/rest/v1/search");
+        config.setNexusUrl("http://nexus.invalid/service/rest/v1/search");
 
         assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty(),
                 "a nexusUrl without a {sha1} placeholder has no default path to fall back to, "
@@ -97,7 +97,7 @@ class RemoteCoordinatesResolverTest {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(true);
         config.setIncludes(List.of("**/*.jar"));
-        config.setArtifactoryUrl("http://127.0.0.1:1/api/search/checksum");
+        config.setArtifactoryUrl("http://artifactory.invalid/api/search/checksum");
 
         assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty(),
                 "an artifactoryUrl without a {sha1} placeholder has no default path to fall back to, "
