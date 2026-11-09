@@ -162,7 +162,7 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 | `attach` | `false` | When `true`, the generated SBOM is attached to the Maven project as an artifact. The attached artifact has the same groupId, artifactId, classifier, and version as the distribution archive but a different type (`cdx.json` or `cdx.xml`). Requires `outputMode` to be `external` or `all`. If the Maven Assembly Plugin's own `attach` is `false`, the SBOM is not attached either |
 | `schemaVersion` | _(latest)_ | CycloneDX schema version to use for SBOM output and serial-number computation, e.g. `1.5` or `1.6`. Defaults to the latest version supported by the integrated CycloneDX Java library |
 | `product` | _(none)_ | User-configurable metadata for the main BOM component. See [Product](#product) below |
-| `remoteLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote checksum lookup. See [Remote Checksum Lookup](#remote-checksum-lookup) below |
+| `remoteLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote Maven coordinates lookup. See [Remote Maven Coordinates Lookup](#remote-maven-coordinates-lookup) below |
 
 The generator reads `includeBaseDirectory` from the assembly descriptor. When it is `true`, the base directory prefix is stripped from file paths in the BOM.
 
@@ -203,7 +203,7 @@ The `product` element sets additional metadata on the main BOM component that ca
 
 All fields are optional. The same `product` element is available on the [`generate` goal](#generate-goal).
 
-#### Remote Checksum Lookup
+#### Remote Maven Coordinates Lookup
 
 Projects that assemble artifacts built with Gradle, Ant, or anything other than Maven have no `pom.properties` or resolvable Maven dependency for those files, so they end up as generic `file` components (`pkg:generic/...`) rather than `library` components (`pkg:maven/...`). `remoteLookup` closes that gap: for files that remain unidentified after every other (local, offline) technique, it looks up their SHA-1 content hash against Maven Central and/or an internal Nexus or Artifactory, and promotes a hit to a proper Maven `library` component.
 
@@ -232,7 +232,7 @@ This is disabled by default and only ever runs as a last resort, after hash matc
 
 | Field | Default | Description |
 |---|---|---|
-| `enabled` | `false` | Turns remote checksum lookup on |
+| `enabled` | `false` | Turns remote Maven coordinates lookup on |
 | `includes` | `**/*.jar` | Glob patterns (matched against the archive-relative path) selecting which unmatched files are eligible for lookup. Narrow this to bound how many files can trigger a network call |
 | `excludes` | _(none)_ | Glob patterns excluding otherwise-matching files |
 | `central` | `false` | Whether to query the public Maven Central search API (`search.maven.org`); needs no configuration or credentials, but is opt-in since it is the only backend that leaves the build environment entirely |
@@ -331,7 +331,7 @@ Scans an exploded directory (e.g., an exploded WAR produced by `maven-war-plugin
 | `attach` | `false` | Attach the generated SBOM to the Maven project as an artifact with type `cdx.json` or `cdx.xml` and classifier `cyclonedx` |
 | `schemaVersion` | _(latest)_ | CycloneDX schema version to use for SBOM output and serial-number computation, e.g. `1.5` or `1.6`. Defaults to the latest version supported by the integrated CycloneDX Java library |
 | `product` | _(none)_ | User-configurable metadata for the main BOM component (CPE, description, supplier, manufacturer, publisher, copyright). See [Product](#product) |
-| `remoteLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote checksum lookup. See [Remote Checksum Lookup](#remote-checksum-lookup) |
+| `remoteLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote Maven coordinates lookup. See [Remote Maven Coordinates Lookup](#remote-maven-coordinates-lookup) |
 
 ### `merge` Goal
 
@@ -383,7 +383,7 @@ Every file in the assembly is inspected and classified as either a **library** (
 
 - **Content hash matching** — each archive entry's content hash is computed and looked up against a pre-built index of the project's resolved Maven artifacts. This identifies artifacts reliably regardless of filename (e.g., custom `outputFileNameMapping` in the assembly descriptor).
 - **Deduplication** — if the same artifact appears at multiple locations in the archive, it is represented as a single component with multiple `evidence/occurrence` entries.
-- **Remote checksum lookup** _(optional)_ — files that no other technique can identify (typically jars built with Gradle, Ant, or another non-Maven tool) can optionally be looked up by SHA-1 checksum against Maven Central, Nexus, or Artifactory, turning them into proper `library` components instead of generic `file` components. Disabled by default; see [Remote Checksum Lookup](#remote-checksum-lookup).
+- **Remote Maven coordinates lookup** _(optional)_ — files that no other technique can identify (typically jars built with Gradle, Ant, or another non-Maven tool) can optionally have their Maven coordinates resolved by querying Maven Central, Nexus, or Artifactory with their SHA-1 content hash, turning them into proper `library` components instead of generic `file` components. Disabled by default; see [Remote Maven Coordinates Lookup](#remote-maven-coordinates-lookup).
 
 Library components include full [Package URL](https://github.com/package-url/purl-spec) (PURL) identifiers. The default `jar` type is omitted (per the purl spec, `type` is a known but optional Maven qualifier), and any qualifiers are emitted in canonical alphabetical order:
 
@@ -545,7 +545,7 @@ Components this tool identifies also carry a purl `identity` recording how they 
 | Shaded jar whose owner was chosen by matching its filename against the embedded `artifactId`s | `manifest-analysis` | 0.5 |
 | Bundled dependency, coordinates from its own `pom.properties` | `manifest-analysis` | 1.0 |
 | Shaded jar with no resolvable owner: each embedded artifact, nested under the file | `manifest-analysis` | 1.0 |
-| Non-Maven-built jar, matched via [remote checksum lookup](#remote-checksum-lookup) | `hash-comparison` | 0.9 |
+| Non-Maven-built jar, matched via [remote Maven coordinates lookup](#remote-maven-coordinates-lookup) | `hash-comparison` | 0.9 |
 
 Components that were not identified by this tool get no identity of its making:
 

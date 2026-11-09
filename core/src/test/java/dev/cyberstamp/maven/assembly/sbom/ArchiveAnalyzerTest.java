@@ -1214,7 +1214,7 @@ class ArchiveAnalyzerTest {
         HttpServer stub = startStubChecksumServer(
                 "{\"items\":[{\"group\":\"org.gradle.example\",\"name\":\"gradle-built\",\"version\":\"1.0\"}]}");
         try {
-            RemoteChecksumResolver resolver = createResolver(stub, List.of("**/*.jar"), List.of());
+            RemoteCoordinatesResolver resolver = createResolver(stub, List.of("**/*.jar"), List.of());
             ArchiveAnalyzer analyzer = createAnalyzerWithRemoteLookup(resolver);
 
             AssemblyComponents model = analyzer.analyze(List.of(
@@ -1226,7 +1226,7 @@ class ArchiveAnalyzerTest {
             assertEquals(1, packages.size());
             ArtifactCoords coords = (ArtifactCoords) packages.get(0).ref();
             assertEquals(ArtifactCoords.of("org.gradle.example", "gradle-built", "1.0"), coords);
-            assertEquals(Identification.remoteChecksumLookup(), packages.get(0).identification());
+            assertEquals(Identification.remoteCoordinatesLookup(), packages.get(0).identification());
             assertEquals(0, extractFileComponents(model).size());
         } finally {
             stub.stop(0);
@@ -1239,7 +1239,7 @@ class ArchiveAnalyzerTest {
         HttpServer stub = startStubChecksumServer(
                 "{\"items\":[{\"group\":\"org.gradle.example\",\"name\":\"excluded\",\"version\":\"1.0\"}]}");
         try {
-            RemoteChecksumResolver resolver = createResolver(
+            RemoteCoordinatesResolver resolver = createResolver(
                     stub, List.of("**/*.jar"), List.of("**/excluded-*.jar"));
             ArchiveAnalyzer analyzer = createAnalyzerWithRemoteLookup(resolver);
 
@@ -1267,18 +1267,18 @@ class ArchiveAnalyzerTest {
         return server;
     }
 
-    private RemoteChecksumResolver createResolver(HttpServer stub, List<String> includes, List<String> excludes) {
+    private RemoteCoordinatesResolver createResolver(HttpServer stub, List<String> includes, List<String> excludes) {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(true);
         config.setCentral(false);
         config.setIncludes(includes);
         config.setExcludes(excludes);
         config.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort()
-                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
-        return RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+                + "/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER);
+        return RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
     }
 
-    private ArchiveAnalyzer createAnalyzerWithRemoteLookup(RemoteChecksumResolver resolver) {
+    private ArchiveAnalyzer createAnalyzerWithRemoteLookup(RemoteCoordinatesResolver resolver) {
         return new ArchiveAnalyzer(
                 effectiveModelResolver, repoSystem, project, session, digest,
                 false, List.of(), true, resolver);

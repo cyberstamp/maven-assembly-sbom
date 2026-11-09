@@ -6,7 +6,7 @@ import java.util.Optional;
  * Looks up Maven coordinates for a SHA-1 content hash against a single
  * remote package repository (e.g. Maven Central, Nexus, Artifactory).
  */
-interface ChecksumArtifactLookup {
+interface CoordinatesLookup {
 
     /**
      * Looks up the artifact whose content hash matches the given SHA-1.

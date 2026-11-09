@@ -15,13 +15,13 @@ import org.slf4j.LoggerFactory;
  * Shared HTTP GET helper for the checksum-search lookup implementations.
  * Centralizes timeout handling, optional Basic authentication, and the
  * "never throw, just log and report empty" contract required by
- * {@link ChecksumArtifactLookup}.
+ * {@link CoordinatesLookup}.
  */
-final class HttpChecksumLookupSupport {
+final class HttpLookupSupport {
 
-    private static final Logger log = LoggerFactory.getLogger(HttpChecksumLookupSupport.class);
+    private static final Logger log = LoggerFactory.getLogger(HttpLookupSupport.class);
 
-    private HttpChecksumLookupSupport() {
+    private HttpLookupSupport() {
     }
 
     /**

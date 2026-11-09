@@ -70,7 +70,7 @@ class ArchiveAnalyzer {
     private final Map<ArtifactCoords, MavenProject> reactorModuleIndex;
     private final List<Bom> externalBoms;
     private final boolean detectEmbeddedSboms;
-    private final RemoteChecksumResolver remoteChecksumResolver;
+    private final RemoteCoordinatesResolver remoteCoordinatesResolver;
     private boolean identityEvidence = true;
     private List<Artifact> allArtifacts;
     private ArtifactHashIndex hashIndex;
@@ -154,7 +154,7 @@ class ArchiveAnalyzer {
             boolean failOnDuplicateHash,
             List<Bom> externalBoms,
             boolean detectEmbeddedSboms,
-            RemoteChecksumResolver remoteChecksumResolver) {
+            RemoteCoordinatesResolver remoteCoordinatesResolver) {
         this.effectiveModelResolver = effectiveModelResolver;
         this.repoSystem = repoSystem;
         this.project = project;
@@ -164,7 +164,7 @@ class ArchiveAnalyzer {
         this.reactorModuleIndex = indexReactorModules(session.getProjects());
         this.externalBoms = externalBoms;
         this.detectEmbeddedSboms = detectEmbeddedSboms;
-        this.remoteChecksumResolver = remoteChecksumResolver;
+        this.remoteCoordinatesResolver = remoteCoordinatesResolver;
     }
 
     /**
@@ -247,7 +247,7 @@ class ArchiveAnalyzer {
         if (!unmatchedByPath.isEmpty()) {
             matchAgainstExternalSboms(unmatchedByPath, content);
         }
-        if (!unmatchedByPath.isEmpty() && remoteChecksumResolver != null) {
+        if (!unmatchedByPath.isEmpty() && remoteCoordinatesResolver != null) {
             resolveUnmatchedViaRemoteLookup(unmatchedByPath, content);
         }
         if (detectEmbeddedSboms) {
@@ -472,16 +472,16 @@ class ArchiveAnalyzer {
         while (it.hasNext()) {
             var mapEntry = it.next();
             FileEntry fileEntry = mapEntry.getValue();
-            if (!remoteChecksumResolver.isCandidate(fileEntry.archivePath())) {
+            if (!remoteCoordinatesResolver.isCandidate(fileEntry.archivePath())) {
                 continue;
             }
-            Optional<ArtifactCoords> coords = remoteChecksumResolver.resolve(fileEntry);
+            Optional<ArtifactCoords> coords = remoteCoordinatesResolver.resolve(fileEntry);
             if (coords.isEmpty()) {
                 continue;
             }
             content.addMavenEntry(new AssemblyComponentsBuilder.MavenEntry(
                     coords.get(), fileEntry.archivePath(), fileEntry.hash(),
-                    Identification.remoteChecksumLookup()));
+                    Identification.remoteCoordinatesLookup()));
             it.remove();
         }
     }

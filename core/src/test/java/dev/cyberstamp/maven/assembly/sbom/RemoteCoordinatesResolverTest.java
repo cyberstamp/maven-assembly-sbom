@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.sun.net.httpserver.HttpServer;
 
-class RemoteChecksumResolverTest {
+class RemoteCoordinatesResolverTest {
 
     @TempDir
     Path tempDir;
@@ -40,7 +40,7 @@ class RemoteChecksumResolverTest {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(false);
 
-        assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty());
+        assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty());
     }
 
     @Test
@@ -48,7 +48,7 @@ class RemoteChecksumResolverTest {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(true);
 
-        assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty());
+        assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty());
     }
 
     @Test
@@ -57,7 +57,7 @@ class RemoteChecksumResolverTest {
         config.setEnabled(true);
         config.setCentral(true);
 
-        RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+        RemoteCoordinatesResolver resolver = RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
 
         assertTrue(resolver.isCandidate("lib/foo.jar"));
         assertFalse(resolver.isCandidate("lib/foo.txt"));
@@ -77,7 +77,7 @@ class RemoteChecksumResolverTest {
         config.setIncludes(List.of("**/*.jar"));
         config.setCentral(false);
 
-        assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty());
+        assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty());
     }
 
     @Test
@@ -87,7 +87,7 @@ class RemoteChecksumResolverTest {
         config.setIncludes(List.of("**/*.jar"));
         config.setNexusUrl("http://127.0.0.1:1/service/rest/v1/search");
 
-        assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty(),
+        assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty(),
                 "a nexusUrl without a {sha1} placeholder has no default path to fall back to, "
                         + "so Nexus must not be added as a usable backend");
     }
@@ -99,7 +99,7 @@ class RemoteChecksumResolverTest {
         config.setIncludes(List.of("**/*.jar"));
         config.setArtifactoryUrl("http://127.0.0.1:1/api/search/checksum");
 
-        assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty(),
+        assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty(),
                 "an artifactoryUrl without a {sha1} placeholder has no default path to fall back to, "
                         + "so Artifactory must not be added as a usable backend");
     }
@@ -112,7 +112,7 @@ class RemoteChecksumResolverTest {
         config.setIncludes(List.of("**/*.jar"));
         config.setExcludes(List.of("**/test-*.jar"));
 
-        RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+        RemoteCoordinatesResolver resolver = RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
 
         assertTrue(resolver.isCandidate("lib/foo.jar"));
         assertFalse(resolver.isCandidate("lib/test-foo.jar"));
@@ -132,11 +132,11 @@ class RemoteChecksumResolverTest {
         config.setCentral(false);
         config.setIncludes(List.of("**/*.jar"));
         config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort()
-                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
+                + "/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER);
         config.setArtifactoryUrl("http://127.0.0.1:" + artifactoryServer.getAddress().getPort()
-                + "/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER);
+                + "/api/search/checksum?sha1=" + ArtifactoryCoordinatesLookup.PLACEHOLDER);
 
-        RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+        RemoteCoordinatesResolver resolver = RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
         FileEntry entry = fileEntry("lib/lib.jar", "content-a");
 
         Optional<ArtifactCoords> result = resolver.resolve(entry);
@@ -157,9 +157,9 @@ class RemoteChecksumResolverTest {
         config.setCentral(false);
         config.setIncludes(List.of("**/*.jar"));
         config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort()
-                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
+                + "/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER);
 
-        RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+        RemoteCoordinatesResolver resolver = RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
         FileEntry first = fileEntry("lib/a.jar", "same-content");
         FileEntry second = fileEntry("lib/b.jar", "same-content");
 
@@ -179,10 +179,10 @@ class RemoteChecksumResolverTest {
         config.setCentral(false);
         config.setIncludes(List.of("**/*.jar"));
         config.setNexusUrl("http://127.0.0.1:" + nexusServer.getAddress().getPort()
-                + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER);
+                + "/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER);
         config.setMaxLookups(1);
 
-        RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+        RemoteCoordinatesResolver resolver = RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
 
         resolver.resolve(fileEntry("lib/a.jar", "content-a"));
         resolver.resolve(fileEntry("lib/b.jar", "content-b"));

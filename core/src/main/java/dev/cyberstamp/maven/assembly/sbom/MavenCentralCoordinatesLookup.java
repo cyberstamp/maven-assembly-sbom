@@ -10,7 +10,7 @@ import java.util.Optional;
  * search API ({@code search.maven.org}). Requires no configuration or
  * credentials.
  */
-final class MavenCentralChecksumLookup implements ChecksumArtifactLookup {
+final class MavenCentralCoordinatesLookup implements CoordinatesLookup {
 
     private static final String DEFAULT_SEARCH_URL_TEMPLATE = "https://search.maven.org/solrsearch/select?q=1:%s&rows=1&wt=json";
 
@@ -18,7 +18,7 @@ final class MavenCentralChecksumLookup implements ChecksumArtifactLookup {
     private final Duration timeout;
     private final String searchUrlTemplate;
 
-    MavenCentralChecksumLookup(HttpClient client, Duration timeout) {
+    MavenCentralCoordinatesLookup(HttpClient client, Duration timeout) {
         this(client, timeout, DEFAULT_SEARCH_URL_TEMPLATE);
     }
 
@@ -27,7 +27,7 @@ final class MavenCentralChecksumLookup implements ChecksumArtifactLookup {
      *        {@code %s} placeholder for the SHA-1 hex digest; overridable so
      *        tests can point at a stub server instead of the real API
      */
-    MavenCentralChecksumLookup(HttpClient client, Duration timeout, String searchUrlTemplate) {
+    MavenCentralCoordinatesLookup(HttpClient client, Duration timeout, String searchUrlTemplate) {
         this.client = client;
         this.timeout = timeout;
         this.searchUrlTemplate = searchUrlTemplate;
@@ -36,9 +36,9 @@ final class MavenCentralChecksumLookup implements ChecksumArtifactLookup {
     @Override
     public Optional<ArtifactCoords> lookup(String sha1Hex) {
         URI uri = URI.create(String.format(searchUrlTemplate, sha1Hex));
-        return HttpChecksumLookupSupport.get(client, uri, timeout, null)
+        return HttpLookupSupport.get(client, uri, timeout, null)
                 .flatMap(body -> MinimalJson.firstArrayObject(body, "docs"))
-                .flatMap(MavenCentralChecksumLookup::toCoords);
+                .flatMap(MavenCentralCoordinatesLookup::toCoords);
     }
 
     private static Optional<ArtifactCoords> toCoords(String doc) {

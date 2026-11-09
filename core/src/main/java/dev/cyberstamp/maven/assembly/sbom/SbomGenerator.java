@@ -59,7 +59,7 @@ public class SbomGenerator {
 
     private ProductInfo product;
     private boolean identityEvidence = true;
-    private RemoteChecksumResolver remoteChecksumResolver;
+    private RemoteCoordinatesResolver remoteCoordinatesResolver;
     private LicenseEnrichment licenseEnrichment;
     private List<org.eclipse.aether.graph.Dependency> cachedManagedDeps;
     private ArchiveAnalyzer lastAnalyzer;
@@ -107,13 +107,13 @@ public class SbomGenerator {
 
     /**
      * Sets the resolver used to identify otherwise-unmatched (e.g.
-     * non-Maven-built) archive entries by remote checksum lookup.
+     * non-Maven-built) archive entries by remote lookup.
      *
-     * @param remoteChecksumResolver the resolver, or {@code null} to disable
-     *        remote checksum lookup
+     * @param remoteCoordinatesResolver the resolver, or {@code null} to disable
+     *        remote lookup
      */
-    void setRemoteChecksumResolver(RemoteChecksumResolver remoteChecksumResolver) {
-        this.remoteChecksumResolver = remoteChecksumResolver;
+    void setRemoteCoordinatesResolver(RemoteCoordinatesResolver remoteCoordinatesResolver) {
+        this.remoteCoordinatesResolver = remoteCoordinatesResolver;
     }
 
     /**
@@ -187,7 +187,7 @@ public class SbomGenerator {
         lastAnalyzer = new ArchiveAnalyzer(
                 effectiveModelResolver, repoSystem,
                 project, session, messageDigest, failOnDuplicateHash,
-                externalBoms, detectEmbeddedSboms, remoteChecksumResolver);
+                externalBoms, detectEmbeddedSboms, remoteCoordinatesResolver);
         lastAnalyzer.setIdentityEvidence(identityEvidence);
         return lastAnalyzer.analyze(entries, baseDirPrefix);
     }

@@ -5,8 +5,8 @@ import java.util.Optional;
 /**
  * Minimal, dependency-free helpers for pulling a handful of known scalar
  * fields out of the small, fixed-shape JSON responses returned by the
- * checksum-search APIs ({@link MavenCentralChecksumLookup},
- * {@link NexusChecksumLookup}, {@link ArtifactoryChecksumLookup}).
+ * checksum-search APIs ({@link MavenCentralCoordinatesLookup},
+ * {@link NexusCoordinatesLookup}, {@link ArtifactoryCoordinatesLookup}).
  *
  * <p>
  * This is intentionally not a general-purpose JSON parser: it only needs to

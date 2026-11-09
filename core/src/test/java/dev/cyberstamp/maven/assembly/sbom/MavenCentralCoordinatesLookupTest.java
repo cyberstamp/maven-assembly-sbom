@@ -16,12 +16,12 @@ import org.junit.jupiter.api.Test;
 import com.sun.net.httpserver.HttpServer;
 
 /**
- * Exercises {@link MavenCentralChecksumLookup} against an in-process stub
+ * Exercises {@link MavenCentralCoordinatesLookup} against an in-process stub
  * HTTP server (JDK built-in, no new test dependency) serving canned Solr
  * search responses, since the real {@code search.maven.org} endpoint is not
  * reachable in a unit test.
  */
-class MavenCentralChecksumLookupTest {
+class MavenCentralCoordinatesLookupTest {
 
     private HttpServer server;
     private volatile String lastQuery;
@@ -73,16 +73,16 @@ class MavenCentralChecksumLookupTest {
 
     @Test
     void returnsEmptyWhenServerUnreachable() {
-        MavenCentralChecksumLookup central = new MavenCentralChecksumLookup(
+        MavenCentralCoordinatesLookup central = new MavenCentralCoordinatesLookup(
                 HttpClient.newHttpClient(), Duration.ofMillis(500),
                 "http://127.0.0.1:1/solrsearch/select?q=1:%s&rows=1&wt=json");
 
         assertTrue(central.lookup("abc123").isEmpty());
     }
 
-    private MavenCentralChecksumLookup lookup() {
+    private MavenCentralCoordinatesLookup lookup() {
         String template = "http://127.0.0.1:" + server.getAddress().getPort()
                 + "/solrsearch/select?q=1:%s&rows=1&wt=json";
-        return new MavenCentralChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), template);
+        return new MavenCentralCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), template);
     }
 }

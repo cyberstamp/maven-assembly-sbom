@@ -27,7 +27,7 @@ import java.util.Optional;
  * new plugin release.
  * </p>
  */
-final class NexusChecksumLookup implements ChecksumArtifactLookup {
+final class NexusCoordinatesLookup implements CoordinatesLookup {
 
     /**
      * Literal marker substituted with the content hash in the configured
@@ -40,7 +40,7 @@ final class NexusChecksumLookup implements ChecksumArtifactLookup {
     private final String searchUrlTemplate;
     private final String basicAuthHeader;
 
-    NexusChecksumLookup(HttpClient client, Duration timeout, String searchUrlTemplate, String basicAuthHeader) {
+    NexusCoordinatesLookup(HttpClient client, Duration timeout, String searchUrlTemplate, String basicAuthHeader) {
         this.client = client;
         this.timeout = timeout;
         this.searchUrlTemplate = searchUrlTemplate;
@@ -50,9 +50,9 @@ final class NexusChecksumLookup implements ChecksumArtifactLookup {
     @Override
     public Optional<ArtifactCoords> lookup(String sha1Hex) {
         URI uri = URI.create(searchUrlTemplate.replace(PLACEHOLDER, sha1Hex));
-        return HttpChecksumLookupSupport.get(client, uri, timeout, basicAuthHeader)
+        return HttpLookupSupport.get(client, uri, timeout, basicAuthHeader)
                 .flatMap(body -> MinimalJson.firstArrayObject(body, "items"))
-                .flatMap(NexusChecksumLookup::toCoords);
+                .flatMap(NexusCoordinatesLookup::toCoords);
     }
 
     private static Optional<ArtifactCoords> toCoords(String item) {

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sun.net.httpserver.HttpServer;
 
-class NexusChecksumLookupTest {
+class NexusCoordinatesLookupTest {
 
     private HttpServer server;
     private final AtomicReference<String> lastQuery = new AtomicReference<>();
@@ -58,7 +58,7 @@ class NexusChecksumLookupTest {
     @Test
     void sendsAuthorizationHeaderWhenConfigured() {
         respondWith(200, "{\"items\":[]}");
-        String auth = HttpChecksumLookupSupport.basicAuthHeader("alice", "s3cr3t");
+        String auth = HttpLookupSupport.basicAuthHeader("alice", "s3cr3t");
 
         lookup(auth).lookup("abc123");
 
@@ -90,8 +90,8 @@ class NexusChecksumLookupTest {
 
     @Test
     void returnsEmptyWhenServerUnreachable() {
-        NexusChecksumLookup nexus = new NexusChecksumLookup(HttpClient.newHttpClient(), Duration.ofMillis(500),
-                "http://127.0.0.1:1/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER, null);
+        NexusCoordinatesLookup nexus = new NexusCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofMillis(500),
+                "http://127.0.0.1:1/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER, null);
 
         assertTrue(nexus.lookup("abc123").isEmpty());
     }
@@ -99,9 +99,9 @@ class NexusChecksumLookupTest {
     @Test
     void substitutesSha1IntoConfiguredSearchUrlAndKeepsExtraParameters() {
         respondWith(200, "{\"items\":[{\"group\":\"com.example\",\"name\":\"lib\",\"version\":\"2.0\"}]}");
-        String searchUrl = baseUrl() + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER
+        String searchUrl = baseUrl() + "/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER
                 + "&repository=my-repo";
-        NexusChecksumLookup nexus = new NexusChecksumLookup(
+        NexusCoordinatesLookup nexus = new NexusCoordinatesLookup(
                 HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, null);
 
         Optional<ArtifactCoords> result = nexus.lookup("abc123");
@@ -114,8 +114,8 @@ class NexusChecksumLookupTest {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }
 
-    private NexusChecksumLookup lookup(String authHeader) {
-        String searchUrl = baseUrl() + "/service/rest/v1/search?sha1=" + NexusChecksumLookup.PLACEHOLDER;
-        return new NexusChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
+    private NexusCoordinatesLookup lookup(String authHeader) {
+        String searchUrl = baseUrl() + "/service/rest/v1/search?sha1=" + NexusCoordinatesLookup.PLACEHOLDER;
+        return new NexusCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
     }
 }

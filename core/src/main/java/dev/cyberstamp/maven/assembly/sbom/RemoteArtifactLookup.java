@@ -5,8 +5,9 @@ import java.util.List;
 
 /**
  * User-configurable settings for identifying non-Maven-built archive entries
- * (e.g. jars built with Gradle or Ant) by looking up their SHA-1 checksum
- * against Maven Central and/or an internal Nexus or Artifactory instance.
+ * (e.g. jars built with Gradle or Ant) by resolving their Maven coordinates
+ * from a remote package repository — Maven Central and/or an internal Nexus
+ * or Artifactory instance — keyed by the entry's SHA-1 content hash.
  *
  * <p>
  * Disabled by default. When {@linkplain #isEnabled() enabled}, every backend
@@ -34,7 +35,7 @@ public class RemoteArtifactLookup {
     private int maxLookups = 200;
 
     /**
-     * Returns whether remote checksum lookup is enabled.
+     * Returns whether remote Maven coordinates lookup is enabled.
      *
      * @return {@code true} if enabled
      */
@@ -43,7 +44,7 @@ public class RemoteArtifactLookup {
     }
 
     /**
-     * Enables or disables remote checksum lookup.
+     * Enables or disables remote Maven coordinates lookup.
      *
      * @param enabled whether to enable the lookup
      */

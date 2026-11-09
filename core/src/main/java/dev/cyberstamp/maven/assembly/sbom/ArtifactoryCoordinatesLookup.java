@@ -31,7 +31,7 @@ import java.util.Optional;
  * not a new plugin release.
  * </p>
  */
-final class ArtifactoryChecksumLookup implements ChecksumArtifactLookup {
+final class ArtifactoryCoordinatesLookup implements CoordinatesLookup {
 
     /**
      * Literal marker substituted with the content hash in the configured
@@ -44,7 +44,7 @@ final class ArtifactoryChecksumLookup implements ChecksumArtifactLookup {
     private final String searchUrlTemplate;
     private final String basicAuthHeader;
 
-    ArtifactoryChecksumLookup(HttpClient client, Duration timeout, String searchUrlTemplate, String basicAuthHeader) {
+    ArtifactoryCoordinatesLookup(HttpClient client, Duration timeout, String searchUrlTemplate, String basicAuthHeader) {
         this.client = client;
         this.timeout = timeout;
         this.searchUrlTemplate = searchUrlTemplate;
@@ -54,10 +54,10 @@ final class ArtifactoryChecksumLookup implements ChecksumArtifactLookup {
     @Override
     public Optional<ArtifactCoords> lookup(String sha1Hex) {
         URI uri = URI.create(searchUrlTemplate.replace(PLACEHOLDER, sha1Hex));
-        return HttpChecksumLookupSupport.get(client, uri, timeout, basicAuthHeader)
+        return HttpLookupSupport.get(client, uri, timeout, basicAuthHeader)
                 .flatMap(body -> MinimalJson.firstArrayObject(body, "results"))
                 .flatMap(result -> MinimalJson.stringField(result, "uri"))
-                .flatMap(ArtifactoryChecksumLookup::toCoords);
+                .flatMap(ArtifactoryCoordinatesLookup::toCoords);
     }
 
     /**

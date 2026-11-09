@@ -34,9 +34,9 @@ import org.slf4j.LoggerFactory;
  * the {@link ArchiveAnalyzer} pipeline.
  * </p>
  */
-final class RemoteChecksumResolver {
+final class RemoteCoordinatesResolver {
 
-    private static final Logger log = LoggerFactory.getLogger(RemoteChecksumResolver.class);
+    private static final Logger log = LoggerFactory.getLogger(RemoteCoordinatesResolver.class);
 
     /**
      * Fallback include pattern used when {@link RemoteArtifactLookup#getIncludes()}
@@ -46,7 +46,7 @@ final class RemoteChecksumResolver {
 
     private final List<PathMatcher> includeMatchers;
     private final List<PathMatcher> excludeMatchers;
-    private final List<ChecksumArtifactLookup> backends;
+    private final List<CoordinatesLookup> backends;
     private final int maxLookups;
     private final MessageDigest sha1Digest;
     private final Map<String, Optional<ArtifactCoords>> cache = new HashMap<>();
@@ -54,8 +54,8 @@ final class RemoteChecksumResolver {
     private int callsUsed;
     private boolean capWarningLogged;
 
-    private RemoteChecksumResolver(List<PathMatcher> includeMatchers, List<PathMatcher> excludeMatchers,
-            List<ChecksumArtifactLookup> backends, int maxLookups, MessageDigest sha1Digest) {
+    private RemoteCoordinatesResolver(List<PathMatcher> includeMatchers, List<PathMatcher> excludeMatchers,
+            List<CoordinatesLookup> backends, int maxLookups, MessageDigest sha1Digest) {
         this.includeMatchers = includeMatchers;
         this.excludeMatchers = excludeMatchers;
         this.backends = backends;
@@ -78,18 +78,18 @@ final class RemoteChecksumResolver {
      *        {@code null}
      * @return the resolver, or empty if disabled/unusable
      */
-    static Optional<RemoteChecksumResolver> create(RemoteArtifactLookup config,
+    static Optional<RemoteCoordinatesResolver> create(RemoteArtifactLookup config,
             String nexusUsername, String nexusPassword,
             String artifactoryUsername, String artifactoryPassword) {
         if (config == null || !config.isEnabled()) {
             return Optional.empty();
         }
-        List<ChecksumArtifactLookup> backends = buildBackends(
+        List<CoordinatesLookup> backends = buildBackends(
                 config, nexusUsername, nexusPassword, artifactoryUsername, artifactoryPassword);
         if (backends.isEmpty()) {
             log.warn("remoteLookup is enabled but no backend is configured "
                     + "(central is disabled and neither nexusUrl nor artifactoryUrl is set); "
-                    + "remote checksum lookup will not run.");
+                    + "remote lookup will not run.");
             return Optional.empty();
         }
         List<String> includes = config.includesOrEmpty();
@@ -101,7 +101,7 @@ final class RemoteChecksumResolver {
         List<PathMatcher> excludeMatchers = compileMatchers(config.excludesOrEmpty());
         if (includeMatchers.isEmpty()) {
             log.warn("None of the configured remoteLookup.includes patterns are valid globs; "
-                    + "remote checksum lookup will not run.");
+                    + "remote lookup will not run.");
             return Optional.empty();
         }
         MessageDigest sha1Digest;
@@ -111,40 +111,40 @@ final class RemoteChecksumResolver {
             // SHA-1 is guaranteed to be available on every standard JDK.
             throw new IllegalStateException("SHA-1 digest not available", e);
         }
-        return Optional.of(new RemoteChecksumResolver(
+        return Optional.of(new RemoteCoordinatesResolver(
                 includeMatchers, excludeMatchers, backends, config.getMaxLookups(), sha1Digest));
     }
 
-    private static List<ChecksumArtifactLookup> buildBackends(RemoteArtifactLookup config,
+    private static List<CoordinatesLookup> buildBackends(RemoteArtifactLookup config,
             String nexusUsername, String nexusPassword,
             String artifactoryUsername, String artifactoryPassword) {
         Duration timeout = Duration.ofMillis(Math.max(1, config.getTimeoutMillis()));
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(timeout)
                 .build();
-        List<ChecksumArtifactLookup> backends = new ArrayList<>(3);
+        List<CoordinatesLookup> backends = new ArrayList<>(3);
         if (config.isCentral()) {
-            backends.add(new MavenCentralChecksumLookup(client, timeout));
+            backends.add(new MavenCentralCoordinatesLookup(client, timeout));
         }
         if (isSet(config.getNexusUrl())) {
-            if (config.getNexusUrl().contains(NexusChecksumLookup.PLACEHOLDER)) {
+            if (config.getNexusUrl().contains(NexusCoordinatesLookup.PLACEHOLDER)) {
                 String auth = authHeader(nexusUsername, nexusPassword);
-                backends.add(new NexusChecksumLookup(client, timeout, config.getNexusUrl(), auth));
+                backends.add(new NexusCoordinatesLookup(client, timeout, config.getNexusUrl(), auth));
             } else {
                 log.warn("nexusUrl must be a complete search URL containing a {} placeholder "
                         + "(e.g. https://nexus.example.com/service/rest/v1/search?sha1={}); "
-                        + "Nexus lookup will not run.", NexusChecksumLookup.PLACEHOLDER, NexusChecksumLookup.PLACEHOLDER);
+                        + "Nexus lookup will not run.", NexusCoordinatesLookup.PLACEHOLDER, NexusCoordinatesLookup.PLACEHOLDER);
             }
         }
         if (isSet(config.getArtifactoryUrl())) {
-            if (config.getArtifactoryUrl().contains(ArtifactoryChecksumLookup.PLACEHOLDER)) {
+            if (config.getArtifactoryUrl().contains(ArtifactoryCoordinatesLookup.PLACEHOLDER)) {
                 String auth = authHeader(artifactoryUsername, artifactoryPassword);
-                backends.add(new ArtifactoryChecksumLookup(client, timeout, config.getArtifactoryUrl(), auth));
+                backends.add(new ArtifactoryCoordinatesLookup(client, timeout, config.getArtifactoryUrl(), auth));
             } else {
                 log.warn("artifactoryUrl must be a complete search URL containing a {} placeholder "
                         + "(e.g. https://artifactory.example.com/artifactory/api/search/checksum?sha1={}); "
                         + "Artifactory lookup will not run.",
-                        ArtifactoryChecksumLookup.PLACEHOLDER, ArtifactoryChecksumLookup.PLACEHOLDER);
+                        ArtifactoryCoordinatesLookup.PLACEHOLDER, ArtifactoryCoordinatesLookup.PLACEHOLDER);
             }
         }
         return backends;
@@ -158,7 +158,7 @@ final class RemoteChecksumResolver {
         if (!isSet(username) || password == null) {
             return null;
         }
-        return HttpChecksumLookupSupport.basicAuthHeader(username, password);
+        return HttpLookupSupport.basicAuthHeader(username, password);
     }
 
     private static List<PathMatcher> compileMatchers(List<String> globs) {
@@ -227,7 +227,7 @@ final class RemoteChecksumResolver {
         try {
             sha1 = SbomUtils.computeHash(sha1Digest, entry.sourceFile().toPath());
         } catch (IOException e) {
-            log.debug("Could not hash {} for remote checksum lookup", entry.sourceFile(), e);
+            log.debug("Could not hash {} for remote lookup", entry.sourceFile(), e);
             return Optional.empty();
         }
         Optional<ArtifactCoords> cached = cache.get(sha1);
@@ -240,10 +240,10 @@ final class RemoteChecksumResolver {
     }
 
     private Optional<ArtifactCoords> lookupBackends(String sha1) {
-        for (ChecksumArtifactLookup backend : backends) {
+        for (CoordinatesLookup backend : backends) {
             if (callsUsed >= maxLookups) {
                 if (!capWarningLogged) {
-                    log.warn("Remote checksum lookup call budget ({}) exhausted; "
+                    log.warn("Remote lookup call budget ({}) exhausted; "
                             + "remaining unmatched files will not be looked up", maxLookups);
                     capWarningLogged = true;
                 }

@@ -166,9 +166,9 @@ public class GenerateSbomMojo extends AbstractMojo {
 
     /**
      * Settings for identifying non-Maven-built archive entries (e.g. jars
-     * built with Gradle or Ant) by looking up their SHA-1 checksum against
-     * Maven Central and/or an internal Nexus or Artifactory instance.
-     * Disabled by default.
+     * built with Gradle or Ant) by resolving their Maven coordinates from
+     * Maven Central and/or an internal Nexus or Artifactory instance, keyed
+     * by the entry's SHA-1 content hash. Disabled by default.
      */
     @Parameter
     private RemoteArtifactLookup remoteLookup;
@@ -232,7 +232,7 @@ public class GenerateSbomMojo extends AbstractMojo {
                 librariesOnly, schemaVersion);
         generator.setProduct(product);
         generator.setIdentityEvidence(identityEvidence);
-        generator.setRemoteChecksumResolver(buildRemoteChecksumResolver());
+        generator.setRemoteCoordinatesResolver(buildRemoteCoordinatesResolver());
         Bom bom = generator.generate(entries, null, externalBomList,
                 null, null, project.getPackaging());
 
@@ -264,13 +264,13 @@ public class GenerateSbomMojo extends AbstractMojo {
      * @return the resolver, or {@code null} if remote lookup is disabled or
      *         not usable as configured
      */
-    private RemoteChecksumResolver buildRemoteChecksumResolver() {
+    private RemoteCoordinatesResolver buildRemoteCoordinatesResolver() {
         if (remoteLookup == null || !remoteLookup.isEnabled()) {
             return null;
         }
         Credentials nexusCredentials = resolveCredentials(remoteLookup.getNexusServerId());
         Credentials artifactoryCredentials = resolveCredentials(remoteLookup.getArtifactoryServerId());
-        return RemoteChecksumResolver.create(remoteLookup,
+        return RemoteCoordinatesResolver.create(remoteLookup,
                 nexusCredentials.username(), nexusCredentials.password(),
                 artifactoryCredentials.username(), artifactoryCredentials.password())
                 .orElse(null);

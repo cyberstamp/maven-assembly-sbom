@@ -74,7 +74,7 @@ public record Identification(Technique technique, double confidence) {
      *
      * @return {@code hash-comparison} at reduced confidence
      */
-    public static Identification remoteChecksumLookup() {
+    public static Identification remoteCoordinatesLookup() {
         return new Identification(Technique.HASH_COMPARISON, 0.9);
     }
 }

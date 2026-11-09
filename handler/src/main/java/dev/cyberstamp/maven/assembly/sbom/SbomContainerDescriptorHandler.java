@@ -165,7 +165,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
                     librariesOnly, schemaVersion);
             generator.setProduct(product);
             generator.setIdentityEvidence(identityEvidence);
-            generator.setRemoteChecksumResolver(buildRemoteChecksumResolver());
+            generator.setRemoteCoordinatesResolver(buildRemoteCoordinatesResolver());
             Bom bom = generator.generate(entries, baseDirPrefix, externalBomList,
                     assemblyId, classifier, detectArchiveType(archiver));
 
@@ -274,13 +274,13 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      * @return the resolver, or {@code null} if remote lookup is disabled or
      *         not usable as configured
      */
-    private RemoteChecksumResolver buildRemoteChecksumResolver() {
+    private RemoteCoordinatesResolver buildRemoteCoordinatesResolver() {
         if (remoteLookup == null || !remoteLookup.isEnabled()) {
             return null;
         }
         Credentials nexusCredentials = resolveCredentials(remoteLookup.getNexusServerId());
         Credentials artifactoryCredentials = resolveCredentials(remoteLookup.getArtifactoryServerId());
-        return RemoteChecksumResolver.create(remoteLookup,
+        return RemoteCoordinatesResolver.create(remoteLookup,
                 nexusCredentials.username(), nexusCredentials.password(),
                 artifactoryCredentials.username(), artifactoryCredentials.password())
                 .orElse(null);

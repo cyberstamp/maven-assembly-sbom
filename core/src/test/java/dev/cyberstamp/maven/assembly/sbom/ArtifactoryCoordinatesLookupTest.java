@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sun.net.httpserver.HttpServer;
 
-class ArtifactoryChecksumLookupTest {
+class ArtifactoryCoordinatesLookupTest {
 
     private HttpServer server;
     private final AtomicReference<String> lastAuthHeader = new AtomicReference<>();
@@ -49,9 +49,9 @@ class ArtifactoryChecksumLookupTest {
         respondWith(200, "{\"results\":[{\"uri\":\"https://artifactory.example.com/artifactory/api/storage/"
                 + "libs-release-local/org/apache/commons/commons-lang3/3.12.0/commons-lang3-3.12.0.jar\"}]}");
         String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-        String searchUrl = baseUrl + "/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER
+        String searchUrl = baseUrl + "/api/search/checksum?sha1=" + ArtifactoryCoordinatesLookup.PLACEHOLDER
                 + "&repos=central,my-internal-repo";
-        ArtifactoryChecksumLookup artifactory = new ArtifactoryChecksumLookup(
+        ArtifactoryCoordinatesLookup artifactory = new ArtifactoryCoordinatesLookup(
                 HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, null);
 
         Optional<ArtifactCoords> result = artifactory.lookup("abc123");
@@ -73,7 +73,7 @@ class ArtifactoryChecksumLookupTest {
     @Test
     void sendsAuthorizationHeaderWhenConfigured() {
         respondWith(200, "{\"results\":[]}");
-        String auth = HttpChecksumLookupSupport.basicAuthHeader("bob", "hunter2");
+        String auth = HttpLookupSupport.basicAuthHeader("bob", "hunter2");
 
         lookup(auth).lookup("abc123");
 
@@ -104,16 +104,16 @@ class ArtifactoryChecksumLookupTest {
 
     @Test
     void returnsEmptyWhenServerUnreachable() {
-        ArtifactoryChecksumLookup artifactory = new ArtifactoryChecksumLookup(HttpClient.newHttpClient(),
+        ArtifactoryCoordinatesLookup artifactory = new ArtifactoryCoordinatesLookup(HttpClient.newHttpClient(),
                 Duration.ofMillis(500),
-                "http://127.0.0.1:1/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER, null);
+                "http://127.0.0.1:1/api/search/checksum?sha1=" + ArtifactoryCoordinatesLookup.PLACEHOLDER, null);
 
         assertTrue(artifactory.lookup("abc123").isEmpty());
     }
 
-    private ArtifactoryChecksumLookup lookup(String authHeader) {
+    private ArtifactoryCoordinatesLookup lookup(String authHeader) {
         String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-        String searchUrl = baseUrl + "/api/search/checksum?sha1=" + ArtifactoryChecksumLookup.PLACEHOLDER;
-        return new ArtifactoryChecksumLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
+        String searchUrl = baseUrl + "/api/search/checksum?sha1=" + ArtifactoryCoordinatesLookup.PLACEHOLDER;
+        return new ArtifactoryCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), searchUrl, authHeader);
     }
 }
