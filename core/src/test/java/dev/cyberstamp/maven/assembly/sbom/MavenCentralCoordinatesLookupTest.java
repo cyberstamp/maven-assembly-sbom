@@ -77,14 +77,15 @@ class MavenCentralCoordinatesLookupTest {
     void returnsEmptyWhenServerUnreachable() throws IOException {
         MavenCentralCoordinatesLookup central = new MavenCentralCoordinatesLookup(
                 HttpClient.newHttpClient(), Duration.ofMillis(500),
-                "http://127.0.0.1:" + unreachablePort() + "/solrsearch/select?q=1:%s&rows=1&wt=json");
+                "http://127.0.0.1:" + unreachablePort() + "/solrsearch/select?q=1:"
+                        + MavenCentralCoordinatesLookup.PLACEHOLDER + "&rows=1&wt=json");
 
         assertTrue(central.lookup("abc123").isEmpty());
     }
 
     private MavenCentralCoordinatesLookup lookup() {
         String template = "http://127.0.0.1:" + server.getAddress().getPort()
-                + "/solrsearch/select?q=1:%s&rows=1&wt=json";
+                + "/solrsearch/select?q=1:" + MavenCentralCoordinatesLookup.PLACEHOLDER + "&rows=1&wt=json";
         return new MavenCentralCoordinatesLookup(HttpClient.newHttpClient(), Duration.ofSeconds(5), template);
     }
 

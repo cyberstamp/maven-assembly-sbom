@@ -124,7 +124,16 @@ final class RemoteCoordinatesResolver {
                 .build();
         List<CoordinatesLookup> backends = new ArrayList<>(3);
         if (config.isCentral()) {
-            backends.add(new MavenCentralCoordinatesLookup(client, timeout));
+            String centralUrl = config.getCentralUrl();
+            if (!isSet(centralUrl)) {
+                backends.add(new MavenCentralCoordinatesLookup(client, timeout));
+            } else if (centralUrl.contains(MavenCentralCoordinatesLookup.PLACEHOLDER)) {
+                backends.add(new MavenCentralCoordinatesLookup(client, timeout, centralUrl));
+            } else {
+                log.warn("centralUrl must be a complete search URL containing a {} placeholder "
+                        + "(e.g. {}); Maven Central lookup will not run.",
+                        MavenCentralCoordinatesLookup.PLACEHOLDER, MavenCentralCoordinatesLookup.DEFAULT_SEARCH_URL);
+            }
         }
         if (isSet(config.getNexusUrl())) {
             if (config.getNexusUrl().contains(NexusCoordinatesLookup.PLACEHOLDER)) {

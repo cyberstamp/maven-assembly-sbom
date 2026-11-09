@@ -236,6 +236,7 @@ This is disabled by default and only ever runs as a last resort, after hash matc
 | `includes` | `**/*.jar` | Glob patterns (matched against the archive-relative path) selecting which unmatched files are eligible for lookup. Narrow this to bound how many files can trigger a network call |
 | `excludes` | _(none)_ | Glob patterns excluding otherwise-matching files |
 | `central` | `false` | Whether to query the public Maven Central search API (`search.maven.org`); needs no configuration or credentials, but is opt-in since it is the only backend that leaves the build environment entirely |
+| `centralUrl` | `search.maven.org` | Overrides the built-in Maven Central search URL, with a literal `{sha1}` in place of the content hash. Only used when `central` is `true`. See [Writing the search URL](#writing-the-search-url) below |
 | `nexusUrl` | _(none)_ | Complete search URL of an internal Nexus Repository Manager **3** instance, with a literal `{sha1}` in place of the content hash. Setting this enables Nexus lookup. See [Writing the search URL](#writing-the-search-url) below |
 | `nexusServerId` | _(none)_ | Id of a `<server>` in `settings.xml` whose username/password are sent as HTTP Basic auth to Nexus. Omit for anonymous access |
 | `artifactoryUrl` | _(none)_ | Complete search URL of an internal JFrog Artifactory instance, with a literal `{sha1}` in place of the content hash. Setting this enables Artifactory lookup. See [Writing the search URL](#writing-the-search-url) below |
@@ -247,7 +248,7 @@ Backends are tried in a fixed order — Maven Central, then Nexus, then Artifact
 
 ##### Writing the search URL
 
-`nexusUrl`/`artifactoryUrl` take the **complete search request**, not just a server address — write it exactly as you'd call it with `curl`, but with a literal `{sha1}` where the content hash goes. At lookup time, the plugin only substitutes `{sha1}` with the actual hash and calls the URL as-is; it never builds or guesses any part of the request itself.
+`nexusUrl`/`artifactoryUrl` take the **complete search request**, not just a server address — write it exactly as you'd call it with `curl`, but with a literal `{sha1}` where the content hash goes. At lookup time, the plugin only substitutes `{sha1}` with the actual hash and calls the URL as-is; it never builds or guesses any part of the request itself. Unlike Nexus/Artifactory, Maven Central already has a working, zero-configuration default (`search.maven.org`) — `centralUrl` is purely an optional override in the same `{sha1}` form, for the two reasons below.
 
 ```xml
 <!-- Nexus 3: GET /service/rest/v1/search?sha1=... -->
@@ -255,9 +256,12 @@ Backends are tried in a fixed order — Maven Central, then Nexus, then Artifact
 
 <!-- Artifactory: GET /api/search/checksum?sha1=... -->
 <artifactoryUrl>https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}</artifactoryUrl>
+
+<!-- Maven Central: optional, overrides the built-in search.maven.org default -->
+<centralUrl>https://repo.example.com/central-mirror/solrsearch/select?q=1:{sha1}&amp;rows=1&amp;wt=json</centralUrl>
 ```
 
-If you omit `{sha1}`, that backend is skipped with a warning — there's no default path to fall back to.
+If you set `nexusUrl`/`artifactoryUrl`/`centralUrl` without `{sha1}`, that backend is skipped with a warning — there's no default path to fall back to.
 
 This is deliberate, for two reasons:
 1. **You can add any extra query parameter your server supports**, like Nexus's `repository` filter or Artifactory's `repos` filter, to restrict the search to specific (groups of) repositories — just append it to the URL yourself:
@@ -265,7 +269,7 @@ This is deliberate, for two reasons:
    <nexusUrl>https://nexus.example.com/service/rest/v1/search?sha1={sha1}&amp;repository=my-repo</nexusUrl>
    <artifactoryUrl>https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}&amp;repos=central,my-internal-repo</artifactoryUrl>
    ```
-2. **It's resilient to future API changes.** If Nexus or Artifactory ever changes its REST path or parameter names in a later version, you only need to update this one setting — not wait for a new release of this plugin.
+2. **It's resilient to future API changes.** If Nexus, Artifactory, or Sonatype ever changes its REST path or parameter names, you only need to update this one setting — not wait for a new release of this plugin. That's also why `centralUrl` exists despite Central needing no configuration normally: it lets you point at an internal mirror of the Central search API, or adapt in place if the public one ever changes shape.
 
 ### Output Location
 

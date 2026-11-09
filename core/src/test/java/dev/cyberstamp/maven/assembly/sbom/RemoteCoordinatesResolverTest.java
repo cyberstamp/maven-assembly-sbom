@@ -24,6 +24,7 @@ class RemoteCoordinatesResolverTest {
 
     private HttpServer nexusServer;
     private HttpServer artifactoryServer;
+    private HttpServer centralServer;
 
     @AfterEach
     void stopServers() {
@@ -32,6 +33,9 @@ class RemoteCoordinatesResolverTest {
         }
         if (artifactoryServer != null) {
             artifactoryServer.stop(0);
+        }
+        if (centralServer != null) {
+            centralServer.stop(0);
         }
     }
 
@@ -102,6 +106,39 @@ class RemoteCoordinatesResolverTest {
         assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty(),
                 "an artifactoryUrl without a {sha1} placeholder has no default path to fall back to, "
                         + "so Artifactory must not be added as a usable backend");
+    }
+
+    @Test
+    void centralUrlWithoutSha1PlaceholderIsRejected() {
+        RemoteArtifactLookup config = new RemoteArtifactLookup();
+        config.setEnabled(true);
+        config.setIncludes(List.of("**/*.jar"));
+        config.setCentral(true);
+        config.setCentralUrl("https://search.example.invalid/solrsearch/select");
+
+        assertTrue(RemoteCoordinatesResolver.create(config, null, null, null, null).isEmpty(),
+                "a centralUrl without a {sha1} placeholder has no default to fall back to, "
+                        + "so Central must not be added as a usable backend");
+    }
+
+    @Test
+    void centralUrlOverridesDefaultEndpoint() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        centralServer = startServer("/custom-mirror/solrsearch/select", hits,
+                "{\"response\":{\"docs\":[{\"g\":\"com.example\",\"a\":\"lib\",\"v\":\"1.0\"}]}}");
+
+        RemoteArtifactLookup config = new RemoteArtifactLookup();
+        config.setEnabled(true);
+        config.setIncludes(List.of("**/*.jar"));
+        config.setCentral(true);
+        config.setCentralUrl("http://127.0.0.1:" + centralServer.getAddress().getPort()
+                + "/custom-mirror/solrsearch/select?q=1:" + MavenCentralCoordinatesLookup.PLACEHOLDER);
+
+        RemoteCoordinatesResolver resolver = RemoteCoordinatesResolver.create(config, null, null, null, null).orElseThrow();
+        Optional<ArtifactCoords> result = resolver.resolve(fileEntry("lib/lib.jar", "content-a"));
+
+        assertEquals(Optional.of(ArtifactCoords.of("com.example", "lib", "1.0")), result);
+        assertEquals(1, hits.get(), "the overridden URL, not the real search.maven.org, must have been called");
     }
 
     @Test

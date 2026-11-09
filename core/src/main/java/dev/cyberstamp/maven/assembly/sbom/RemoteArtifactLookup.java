@@ -27,6 +27,7 @@ public class RemoteArtifactLookup {
     private List<String> includes;
     private List<String> excludes;
     private boolean central = false;
+    private String centralUrl;
     private String nexusUrl;
     private String nexusServerId;
     private String artifactoryUrl;
@@ -113,6 +114,37 @@ public class RemoteArtifactLookup {
      */
     public void setCentral(boolean central) {
         this.central = central;
+    }
+
+    /**
+     * Returns the complete Maven Central search URL to query, containing a
+     * {@code {sha1}} placeholder, or {@code null} to use the built-in
+     * default ({@code https://search.maven.org/solrsearch/select?q=1:{sha1}&rows=1&wt=json}).
+     *
+     * @return the Central search URL override, or {@code null}
+     */
+    public String getCentralUrl() {
+        return centralUrl;
+    }
+
+    /**
+     * Overrides the default Maven Central search URL, with a literal
+     * {@code {sha1}} in place of the content hash. Only takes effect when
+     * {@link #isCentral()} is {@code true}; leave unset to use the built-in
+     * default, which needs no configuration.
+     *
+     * <p>
+     * Useful to point at an internal mirror of the Central search API, or to
+     * adapt if Sonatype ever changes its public API shape — only this
+     * setting needs updating, not the plugin itself. If the given value does
+     * not contain {@code {sha1}}, Central lookup is skipped with a warning.
+     * </p>
+     *
+     * @param centralUrl the complete Central search URL, containing a
+     *        {@code {sha1}} placeholder, or {@code null} for the default
+     */
+    public void setCentralUrl(String centralUrl) {
+        this.centralUrl = centralUrl;
     }
 
     /**
