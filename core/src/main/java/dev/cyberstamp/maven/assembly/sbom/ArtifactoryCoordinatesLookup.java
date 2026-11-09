@@ -55,8 +55,8 @@ final class ArtifactoryCoordinatesLookup implements CoordinatesLookup {
     public Optional<ArtifactCoords> lookup(String sha1Hex) {
         URI uri = URI.create(searchUrlTemplate.replace(PLACEHOLDER, sha1Hex));
         return HttpLookupSupport.get(client, uri, timeout, basicAuthHeader)
-                .flatMap(body -> MinimalJson.firstArrayObject(body, "results"))
-                .flatMap(result -> MinimalJson.stringField(result, "uri"))
+                .flatMap(body -> JsonLookupSupport.firstArrayObject(body, "results"))
+                .flatMap(result -> JsonLookupSupport.stringField(result, "uri"))
                 .flatMap(ArtifactoryCoordinatesLookup::toCoords);
     }
 

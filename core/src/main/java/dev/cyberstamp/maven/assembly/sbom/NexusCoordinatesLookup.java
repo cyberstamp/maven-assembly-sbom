@@ -51,14 +51,14 @@ final class NexusCoordinatesLookup implements CoordinatesLookup {
     public Optional<ArtifactCoords> lookup(String sha1Hex) {
         URI uri = URI.create(searchUrlTemplate.replace(PLACEHOLDER, sha1Hex));
         return HttpLookupSupport.get(client, uri, timeout, basicAuthHeader)
-                .flatMap(body -> MinimalJson.firstArrayObject(body, "items"))
+                .flatMap(body -> JsonLookupSupport.firstArrayObject(body, "items"))
                 .flatMap(NexusCoordinatesLookup::toCoords);
     }
 
     private static Optional<ArtifactCoords> toCoords(String item) {
-        Optional<String> groupId = MinimalJson.stringField(item, "group");
-        Optional<String> artifactId = MinimalJson.stringField(item, "name");
-        Optional<String> version = MinimalJson.stringField(item, "version");
+        Optional<String> groupId = JsonLookupSupport.stringField(item, "group");
+        Optional<String> artifactId = JsonLookupSupport.stringField(item, "name");
+        Optional<String> version = JsonLookupSupport.stringField(item, "version");
         if (groupId.isEmpty() || artifactId.isEmpty() || version.isEmpty()) {
             return Optional.empty();
         }

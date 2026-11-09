@@ -37,14 +37,14 @@ final class MavenCentralCoordinatesLookup implements CoordinatesLookup {
     public Optional<ArtifactCoords> lookup(String sha1Hex) {
         URI uri = URI.create(String.format(searchUrlTemplate, sha1Hex));
         return HttpLookupSupport.get(client, uri, timeout, null)
-                .flatMap(body -> MinimalJson.firstArrayObject(body, "docs"))
+                .flatMap(body -> JsonLookupSupport.firstArrayObject(body, "docs"))
                 .flatMap(MavenCentralCoordinatesLookup::toCoords);
     }
 
     private static Optional<ArtifactCoords> toCoords(String doc) {
-        Optional<String> groupId = MinimalJson.stringField(doc, "g");
-        Optional<String> artifactId = MinimalJson.stringField(doc, "a");
-        Optional<String> version = MinimalJson.stringField(doc, "v");
+        Optional<String> groupId = JsonLookupSupport.stringField(doc, "g");
+        Optional<String> artifactId = JsonLookupSupport.stringField(doc, "a");
+        Optional<String> version = JsonLookupSupport.stringField(doc, "v");
         if (groupId.isEmpty() || artifactId.isEmpty() || version.isEmpty()) {
             return Optional.empty();
         }
