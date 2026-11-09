@@ -9,11 +9,15 @@ import java.util.List;
  * against Maven Central and/or an internal Nexus or Artifactory instance.
  *
  * <p>
- * Disabled by default. When {@linkplain #isEnabled() enabled}, at least one
- * {@linkplain #getIncludes() include} glob pattern is required so that only a
- * bounded, intentional subset of unmatched files triggers a network call.
- * The lookup only ever runs for archive entries that remain unidentified
- * after every other (local, offline) identification technique.
+ * Disabled by default. When {@linkplain #isEnabled() enabled}, every backend
+ * (Maven Central, Nexus, Artifactory) must also be opted into individually —
+ * nothing is queried implicitly. If no {@linkplain #getIncludes() include}
+ * glob pattern is configured, lookup defaults to {@code **&#47;*.jar} rather
+ * than being skipped, so {@code enabled=true} alone is enough to try; set
+ * {@link #setIncludes(List)} explicitly to narrow which unmatched files
+ * trigger a network call. The lookup only ever runs for archive entries that
+ * remain unidentified after every other (local, offline) identification
+ * technique.
  * </p>
  */
 public class RemoteArtifactLookup {
@@ -21,7 +25,7 @@ public class RemoteArtifactLookup {
     private boolean enabled;
     private List<String> includes;
     private List<String> excludes;
-    private boolean central = true;
+    private boolean central = false;
     private String nexusUrl;
     private String nexusServerId;
     private String artifactoryUrl;
@@ -58,8 +62,10 @@ public class RemoteArtifactLookup {
     }
 
     /**
-     * Sets the include glob patterns. Required (non-empty) when
-     * {@link #isEnabled()} is {@code true}; otherwise no files are looked up.
+     * Sets the include glob patterns. When {@link #isEnabled()} is
+     * {@code true} and this is left unset (or empty), lookup defaults to
+     * {@code **&#47;*.jar}. Set this explicitly to narrow the subset of
+     * unmatched files that can trigger a network call.
      *
      * @param includes the include patterns
      */
@@ -96,8 +102,11 @@ public class RemoteArtifactLookup {
     }
 
     /**
-     * Enables or disables querying Maven Central. Enabled by default since it
-     * requires no configuration and covers most publicly-available artifacts.
+     * Enables or disables querying the public Maven Central search API.
+     * Disabled by default: enabling {@link #setEnabled(boolean) remoteLookup}
+     * does not by itself send any artifact checksum to a public, third-party
+     * service — each backend, including Central, must be opted into
+     * individually.
      *
      * @param central whether to query Maven Central
      */

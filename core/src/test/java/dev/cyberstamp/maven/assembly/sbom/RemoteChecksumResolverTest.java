@@ -44,11 +44,30 @@ class RemoteChecksumResolverTest {
     }
 
     @Test
-    void enabledWithoutIncludesYieldsEmptyResolver() {
+    void enabledWithoutIncludesOrBackendYieldsEmptyResolver() {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(true);
 
         assertTrue(RemoteChecksumResolver.create(config, null, null, null, null).isEmpty());
+    }
+
+    @Test
+    void enabledWithoutIncludesDefaultsToAllJars() {
+        RemoteArtifactLookup config = new RemoteArtifactLookup();
+        config.setEnabled(true);
+        config.setCentral(true);
+
+        RemoteChecksumResolver resolver = RemoteChecksumResolver.create(config, null, null, null, null).orElseThrow();
+
+        assertTrue(resolver.isCandidate("lib/foo.jar"));
+        assertFalse(resolver.isCandidate("lib/foo.txt"));
+    }
+
+    @Test
+    void centralIsDisabledByDefault() {
+        RemoteArtifactLookup config = new RemoteArtifactLookup();
+
+        assertFalse(config.isCentral());
     }
 
     @Test
@@ -65,6 +84,7 @@ class RemoteChecksumResolverTest {
     void isCandidateHonorsIncludesAndExcludes() {
         RemoteArtifactLookup config = new RemoteArtifactLookup();
         config.setEnabled(true);
+        config.setCentral(true);
         config.setIncludes(List.of("**/*.jar"));
         config.setExcludes(List.of("**/test-*.jar"));
 

@@ -24,9 +24,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>
  * Built once per SBOM generation run via {@link #create}, which returns
- * empty when remote lookup is disabled or not usable (no include patterns,
- * or no backend configured) — callers should treat an empty result as
- * "feature off" and skip this step entirely.
+ * empty when remote lookup is disabled or not usable (no backend configured —
+ * missing include patterns instead default to {@code **&#47;*.jar}) — callers
+ * should treat an empty result as "feature off" and skip this step entirely.
  * </p>
  *
  * <p>
@@ -37,6 +37,12 @@ import org.slf4j.LoggerFactory;
 final class RemoteChecksumResolver {
 
     private static final Logger log = LoggerFactory.getLogger(RemoteChecksumResolver.class);
+
+    /**
+     * Fallback include pattern used when {@link RemoteArtifactLookup#getIncludes()}
+     * is unset, so that enabling the feature alone is enough to try it.
+     */
+    private static final List<String> DEFAULT_INCLUDES = List.of("**/*.jar");
 
     private final List<PathMatcher> includeMatchers;
     private final List<PathMatcher> excludeMatchers;
@@ -78,13 +84,6 @@ final class RemoteChecksumResolver {
         if (config == null || !config.isEnabled()) {
             return Optional.empty();
         }
-        List<String> includes = config.includesOrEmpty();
-        if (includes.isEmpty()) {
-            log.warn("remoteLookup is enabled but no include patterns are configured; "
-                    + "remote checksum lookup will not run. Configure at least one "
-                    + "glob pattern in remoteLookup.includes to enable it.");
-            return Optional.empty();
-        }
         List<ChecksumArtifactLookup> backends = buildBackends(
                 config, nexusUsername, nexusPassword, artifactoryUsername, artifactoryPassword);
         if (backends.isEmpty()) {
@@ -92,6 +91,11 @@ final class RemoteChecksumResolver {
                     + "(central is disabled and neither nexusUrl nor artifactoryUrl is set); "
                     + "remote checksum lookup will not run.");
             return Optional.empty();
+        }
+        List<String> includes = config.includesOrEmpty();
+        if (includes.isEmpty()) {
+            includes = DEFAULT_INCLUDES;
+            log.info("remoteLookup.includes not configured; defaulting to {}", DEFAULT_INCLUDES);
         }
         List<PathMatcher> includeMatchers = compileMatchers(includes);
         List<PathMatcher> excludeMatchers = compileMatchers(config.excludesOrEmpty());

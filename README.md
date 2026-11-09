@@ -207,7 +207,7 @@ All fields are optional. The same `product` element is available on the [`genera
 
 Projects that assemble artifacts built with Gradle, Ant, or anything other than Maven have no `pom.properties` or resolvable Maven dependency for those files, so they end up as generic `file` components (`pkg:generic/...`) rather than `library` components (`pkg:maven/...`). `remoteLookup` closes that gap: for files that remain unidentified after every other (local, offline) technique, it looks up their SHA-1 content hash against Maven Central and/or an internal Nexus or Artifactory, and promotes a hit to a proper Maven `library` component.
 
-This is disabled by default and only ever runs as a last resort, after hash matching, unpacked-archive detection, embedded `pom.properties`, and external SBOM matching have all had their chance. Because it calls external services, **`includes` is required** when enabling it — this bounds which files can trigger a lookup so a build with many unidentified files doesn't fire one HTTP call per file:
+This is disabled by default and only ever runs as a last resort, after hash matching, unpacked-archive detection, embedded `pom.properties`, and external SBOM matching have all had their chance. Enabling it alone does nothing: each backend — including the public Maven Central API — must also be opted into individually, so no artifact checksum ever leaves the build unless you explicitly say where it should go:
 
 ```xml
 <containerDescriptorHandler>
@@ -233,9 +233,9 @@ This is disabled by default and only ever runs as a last resort, after hash matc
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Turns remote checksum lookup on |
-| `includes` | _(none)_ | Glob patterns (matched against the archive-relative path, e.g. `**/*.jar`) selecting which unmatched files are eligible for lookup. **Required** when `enabled` is `true` — without it, lookup is skipped with a warning |
+| `includes` | `**/*.jar` | Glob patterns (matched against the archive-relative path) selecting which unmatched files are eligible for lookup. Narrow this to bound how many files can trigger a network call |
 | `excludes` | _(none)_ | Glob patterns excluding otherwise-matching files |
-| `central` | `true` | Whether to query the public Maven Central search API (`search.maven.org`); needs no configuration or credentials |
+| `central` | `false` | Whether to query the public Maven Central search API (`search.maven.org`); needs no configuration or credentials, but is opt-in since it is the only backend that leaves the build environment entirely |
 | `nexusUrl` | _(none)_ | Base URL of an internal Nexus Repository Manager **3** instance (e.g. `https://nexus.example.com`). Setting this enables Nexus lookup via its `/service/rest/v1/search?sha1=...` REST API |
 | `nexusServerId` | _(none)_ | Id of a `<server>` in `settings.xml` whose username/password are sent as HTTP Basic auth to Nexus. Omit for anonymous access |
 | `artifactoryUrl` | _(none)_ | Base URL of an internal JFrog Artifactory instance (e.g. `https://artifactory.example.com/artifactory`). Setting this enables Artifactory lookup via its `/api/search/checksum?sha1=...` API |
