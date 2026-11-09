@@ -87,7 +87,7 @@ final class RemoteCoordinatesResolver {
         List<CoordinatesLookup> backends = buildBackends(
                 config, nexusUsername, nexusPassword, artifactoryUsername, artifactoryPassword);
         if (backends.isEmpty()) {
-            log.warn("remoteLookup is enabled but no backend is configured "
+            log.warn("remoteMavenCoordinatesLookup is enabled but no backend is configured "
                     + "(central is disabled and neither nexusUrl nor artifactoryUrl is set); "
                     + "remote lookup will not run.");
             return Optional.empty();
@@ -95,12 +95,12 @@ final class RemoteCoordinatesResolver {
         List<String> includes = config.includesOrEmpty();
         if (includes.isEmpty()) {
             includes = DEFAULT_INCLUDES;
-            log.info("remoteLookup.includes not configured; defaulting to {}", DEFAULT_INCLUDES);
+            log.info("remoteMavenCoordinatesLookup.includes not configured; defaulting to {}", DEFAULT_INCLUDES);
         }
         List<PathMatcher> includeMatchers = compileMatchers(includes);
         List<PathMatcher> excludeMatchers = compileMatchers(config.excludesOrEmpty());
         if (includeMatchers.isEmpty()) {
-            log.warn("None of the configured remoteLookup.includes patterns are valid globs; "
+            log.warn("None of the configured remoteMavenCoordinatesLookup.includes patterns are valid globs; "
                     + "remote lookup will not run.");
             return Optional.empty();
         }
@@ -179,7 +179,7 @@ final class RemoteCoordinatesResolver {
             try {
                 matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + glob.trim()));
             } catch (IllegalArgumentException e) {
-                log.warn("Ignoring invalid remoteLookup glob pattern '{}': {}", glob, e.getMessage());
+                log.warn("Ignoring invalid remoteMavenCoordinatesLookup glob pattern '{}': {}", glob, e.getMessage());
             }
         }
         return matchers;

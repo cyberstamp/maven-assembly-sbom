@@ -162,7 +162,7 @@ Options are set inside the `<containerDescriptorHandler>` block in the assembly 
 | `attach` | `false` | When `true`, the generated SBOM is attached to the Maven project as an artifact. The attached artifact has the same groupId, artifactId, classifier, and version as the distribution archive but a different type (`cdx.json` or `cdx.xml`). Requires `outputMode` to be `external` or `all`. If the Maven Assembly Plugin's own `attach` is `false`, the SBOM is not attached either |
 | `schemaVersion` | _(latest)_ | CycloneDX schema version to use for SBOM output and serial-number computation, e.g. `1.5` or `1.6`. Defaults to the latest version supported by the integrated CycloneDX Java library |
 | `product` | _(none)_ | User-configurable metadata for the main BOM component. See [Product](#product) below |
-| `remoteLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote Maven coordinates lookup. See [Remote Maven Coordinates Lookup](#remote-maven-coordinates-lookup) below |
+| `remoteMavenCoordinatesLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote Maven coordinates lookup. See [Remote Maven Coordinates Lookup](#remote-maven-coordinates-lookup) below |
 
 The generator reads `includeBaseDirectory` from the assembly descriptor. When it is `true`, the base directory prefix is stripped from file paths in the BOM.
 
@@ -205,7 +205,7 @@ All fields are optional. The same `product` element is available on the [`genera
 
 #### Remote Maven Coordinates Lookup
 
-Projects that assemble artifacts built with Gradle, Ant, or anything other than Maven have no `pom.properties` or resolvable Maven dependency for those files, so they end up as generic `file` components (`pkg:generic/...`) rather than `library` components (`pkg:maven/...`). `remoteLookup` closes that gap: for files that remain unidentified after every other (local, offline) technique, it looks up their SHA-1 content hash against Maven Central and/or an internal Nexus or Artifactory, and promotes a hit to a proper Maven `library` component.
+Projects that assemble artifacts built with Gradle, Ant, or anything other than Maven have no `pom.properties` or resolvable Maven dependency for those files, so they end up as generic `file` components (`pkg:generic/...`) rather than `library` components (`pkg:maven/...`). `remoteMavenCoordinatesLookup` closes that gap: for files that remain unidentified after every other (local, offline) technique, it looks up their SHA-1 content hash against Maven Central and/or an internal Nexus or Artifactory, and promotes a hit to a proper Maven `library` component.
 
 This is disabled by default and only ever runs as a last resort, after hash matching, unpacked-archive detection, embedded `pom.properties`, and external SBOM matching have all had their chance. Enabling it alone does nothing: each backend — including the public Maven Central API — must also be opted into individually, so no artifact checksum ever leaves the build unless you explicitly say where it should go:
 
@@ -213,7 +213,7 @@ This is disabled by default and only ever runs as a last resort, after hash matc
 <containerDescriptorHandler>
     <handlerName>sbom</handlerName>
     <configuration>
-        <remoteLookup>
+        <remoteMavenCoordinatesLookup>
             <enabled>true</enabled>
             <includes>
                 <include>**/*.jar</include>
@@ -225,7 +225,7 @@ This is disabled by default and only ever runs as a last resort, after hash matc
             <nexusServerId>my-nexus</nexusServerId>
             <artifactoryUrl>https://artifactory.example.com/artifactory/api/search/checksum?sha1={sha1}</artifactoryUrl>
             <artifactoryServerId>my-artifactory</artifactoryServerId>
-        </remoteLookup>
+        </remoteMavenCoordinatesLookup>
     </configuration>
 </containerDescriptorHandler>
 ```
@@ -244,7 +244,7 @@ This is disabled by default and only ever runs as a last resort, after hash matc
 | `timeoutMillis` | `3000` | Per-request connect/response timeout |
 | `maxLookups` | `200` | Hard cap on the number of HTTP calls performed in a single run, regardless of how many files match `includes`. Once exhausted, remaining files are simply left unidentified (logged once as a warning) — the build does not fail |
 
-Backends are tried in a fixed order — Maven Central, then Nexus, then Artifactory — stopping at the first match. Credentials are never written into the POM: `nexusServerId`/`artifactoryServerId` reference a `<server>` entry in `settings.xml` (optionally with an encrypted password, like any other Maven credential), resolved at build time. The same `remoteLookup` element is available on the [`generate` goal](#generate-goal).
+Backends are tried in a fixed order — Maven Central, then Nexus, then Artifactory — stopping at the first match. Credentials are never written into the POM: `nexusServerId`/`artifactoryServerId` reference a `<server>` entry in `settings.xml` (optionally with an encrypted password, like any other Maven credential), resolved at build time. The same `remoteMavenCoordinatesLookup` element is available on the [`generate` goal](#generate-goal).
 
 ##### Writing the search URL
 
@@ -335,7 +335,7 @@ Scans an exploded directory (e.g., an exploded WAR produced by `maven-war-plugin
 | `attach` | `false` | Attach the generated SBOM to the Maven project as an artifact with type `cdx.json` or `cdx.xml` and classifier `cyclonedx` |
 | `schemaVersion` | _(latest)_ | CycloneDX schema version to use for SBOM output and serial-number computation, e.g. `1.5` or `1.6`. Defaults to the latest version supported by the integrated CycloneDX Java library |
 | `product` | _(none)_ | User-configurable metadata for the main BOM component (CPE, description, supplier, manufacturer, publisher, copyright). See [Product](#product) |
-| `remoteLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote Maven coordinates lookup. See [Remote Maven Coordinates Lookup](#remote-maven-coordinates-lookup) |
+| `remoteMavenCoordinatesLookup` | _(none, disabled)_ | Settings for identifying non-Maven-built jars (Gradle, Ant, ...) via remote Maven coordinates lookup. See [Remote Maven Coordinates Lookup](#remote-maven-coordinates-lookup) |
 
 ### `merge` Goal
 

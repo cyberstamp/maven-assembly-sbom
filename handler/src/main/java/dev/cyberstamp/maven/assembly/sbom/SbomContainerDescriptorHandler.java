@@ -99,7 +99,7 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     private boolean librariesOnly;
     private boolean attach;
     private ProductInfo product;
-    private RemoteArtifactLookup remoteLookup;
+    private RemoteArtifactLookup remoteMavenCoordinatesLookup;
 
     private boolean includeBaseDir;
     private String assemblyId;
@@ -268,19 +268,19 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
     }
 
     /**
-     * Builds the remote checksum lookup resolver from {@link #remoteLookup},
+     * Builds the remote checksum lookup resolver from {@link #remoteMavenCoordinatesLookup},
      * resolving any {@code settings.xml} server credentials it references.
      *
      * @return the resolver, or {@code null} if remote lookup is disabled or
      *         not usable as configured
      */
     private RemoteCoordinatesResolver buildRemoteCoordinatesResolver() {
-        if (remoteLookup == null || !remoteLookup.isEnabled()) {
+        if (remoteMavenCoordinatesLookup == null || !remoteMavenCoordinatesLookup.isEnabled()) {
             return null;
         }
-        Credentials nexusCredentials = resolveCredentials(remoteLookup.getNexusServerId());
-        Credentials artifactoryCredentials = resolveCredentials(remoteLookup.getArtifactoryServerId());
-        return RemoteCoordinatesResolver.create(remoteLookup,
+        Credentials nexusCredentials = resolveCredentials(remoteMavenCoordinatesLookup.getNexusServerId());
+        Credentials artifactoryCredentials = resolveCredentials(remoteMavenCoordinatesLookup.getArtifactoryServerId());
+        return RemoteCoordinatesResolver.create(remoteMavenCoordinatesLookup,
                 nexusCredentials.username(), nexusCredentials.password(),
                 artifactoryCredentials.username(), artifactoryCredentials.password())
                 .orElse(null);
@@ -1109,10 +1109,10 @@ public class SbomContainerDescriptorHandler implements ContainerDescriptorHandle
      * checksum against Maven Central and/or an internal Nexus or
      * Artifactory instance. Disabled by default.
      *
-     * @param remoteLookup the remote lookup settings
+     * @param remoteMavenCoordinatesLookup the remote lookup settings
      */
     @SuppressWarnings("unused")
-    public void setRemoteLookup(RemoteArtifactLookup remoteLookup) {
-        this.remoteLookup = remoteLookup;
+    public void setRemoteMavenCoordinatesLookup(RemoteArtifactLookup remoteMavenCoordinatesLookup) {
+        this.remoteMavenCoordinatesLookup = remoteMavenCoordinatesLookup;
     }
 }

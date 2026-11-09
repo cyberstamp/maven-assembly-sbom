@@ -105,7 +105,7 @@ public class RemoteArtifactLookup {
 
     /**
      * Enables or disables querying the public Maven Central search API.
-     * Disabled by default: enabling {@link #setEnabled(boolean) remoteLookup}
+     * Disabled by default: enabling {@link #setEnabled(boolean) remoteMavenCoordinatesLookup}
      * does not by itself send any artifact checksum to a public, third-party
      * service — each backend, including Central, must be opted into
      * individually.

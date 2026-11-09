@@ -171,7 +171,7 @@ public class GenerateSbomMojo extends AbstractMojo {
      * by the entry's SHA-1 content hash. Disabled by default.
      */
     @Parameter
-    private RemoteArtifactLookup remoteLookup;
+    private RemoteArtifactLookup remoteMavenCoordinatesLookup;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -258,19 +258,19 @@ public class GenerateSbomMojo extends AbstractMojo {
     }
 
     /**
-     * Builds the remote checksum lookup resolver from {@link #remoteLookup},
+     * Builds the remote checksum lookup resolver from {@link #remoteMavenCoordinatesLookup},
      * resolving any {@code settings.xml} server credentials it references.
      *
      * @return the resolver, or {@code null} if remote lookup is disabled or
      *         not usable as configured
      */
     private RemoteCoordinatesResolver buildRemoteCoordinatesResolver() {
-        if (remoteLookup == null || !remoteLookup.isEnabled()) {
+        if (remoteMavenCoordinatesLookup == null || !remoteMavenCoordinatesLookup.isEnabled()) {
             return null;
         }
-        Credentials nexusCredentials = resolveCredentials(remoteLookup.getNexusServerId());
-        Credentials artifactoryCredentials = resolveCredentials(remoteLookup.getArtifactoryServerId());
-        return RemoteCoordinatesResolver.create(remoteLookup,
+        Credentials nexusCredentials = resolveCredentials(remoteMavenCoordinatesLookup.getNexusServerId());
+        Credentials artifactoryCredentials = resolveCredentials(remoteMavenCoordinatesLookup.getArtifactoryServerId());
+        return RemoteCoordinatesResolver.create(remoteMavenCoordinatesLookup,
                 nexusCredentials.username(), nexusCredentials.password(),
                 artifactoryCredentials.username(), artifactoryCredentials.password())
                 .orElse(null);

@@ -482,7 +482,7 @@ class GenerateSbomMojoTest {
     }
 
     @Test
-    void remoteLookupNotConfiguredLeavesNonMavenJarAsFileComponent() throws Exception {
+    void remoteMavenCoordinatesLookupNotConfiguredLeavesNonMavenJarAsFileComponent() throws Exception {
         createTestJar("WEB-INF/lib/gradle-built-1.0.jar", "non-maven-content");
         when(project.getArtifacts()).thenReturn(Set.of());
 
@@ -491,11 +491,11 @@ class GenerateSbomMojoTest {
 
         Bom bom = BomReader.readBom(output);
         assertTrue(bom.getComponents().stream().noneMatch(c -> c.getType() == Component.Type.LIBRARY),
-                "without remoteLookup configured, a non-Maven jar must stay a generic file component");
+                "without remoteMavenCoordinatesLookup configured, a non-Maven jar must stay a generic file component");
     }
 
     @Test
-    void remoteLookupIdentifiesNonMavenJarViaConfiguredNexus() throws Exception {
+    void remoteMavenCoordinatesLookupIdentifiesNonMavenJarViaConfiguredNexus() throws Exception {
         createTestJar("WEB-INF/lib/gradle-built-1.0.jar", "non-maven-content");
         when(project.getArtifacts()).thenReturn(Set.of());
 
@@ -509,16 +509,16 @@ class GenerateSbomMojoTest {
         });
         stub.start();
         try {
-            RemoteArtifactLookup remoteLookup = new RemoteArtifactLookup();
-            remoteLookup.setEnabled(true);
-            remoteLookup.setCentral(false);
-            remoteLookup.setIncludes(List.of("**/*.jar"));
-            remoteLookup.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort()
+            RemoteArtifactLookup remoteMavenCoordinatesLookup = new RemoteArtifactLookup();
+            remoteMavenCoordinatesLookup.setEnabled(true);
+            remoteMavenCoordinatesLookup.setCentral(false);
+            remoteMavenCoordinatesLookup.setIncludes(List.of("**/*.jar"));
+            remoteMavenCoordinatesLookup.setNexusUrl("http://127.0.0.1:" + stub.getAddress().getPort()
                     + "/service/rest/v1/search?sha1={sha1}");
 
             File output = tempDir.resolve("output.cdx.json").toFile();
             GenerateSbomMojo mojo = createMojo(output);
-            setField(mojo, "remoteLookup", remoteLookup);
+            setField(mojo, "remoteMavenCoordinatesLookup", remoteMavenCoordinatesLookup);
             mojo.execute();
 
             Bom bom = BomReader.readBom(output);
