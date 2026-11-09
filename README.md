@@ -261,6 +261,12 @@ Backends are tried in a fixed order — Maven Central, then Nexus, then Artifact
 <centralUrl>https://repo.example.com/central-mirror/solrsearch/select?q=1:{sha1}&amp;rows=1&amp;wt=json</centralUrl>
 ```
 
+Official API reference for each backend's own query parameters (e.g. Nexus's `repository` filter, Artifactory's `repos` filter):
+
+- Maven Central: [Central REST API guide](https://central.sonatype.org/search/rest-api-guide/)
+- Nexus Repository 3: [Search API](https://help.sonatype.com/en/search-api.html)
+- JFrog Artifactory: [Checksum Search](https://docs.jfrog.com/artifactory/reference/searchChecksum)
+
 If you set `nexusUrl`/`artifactoryUrl`/`centralUrl` without `{sha1}`, that backend is skipped with a warning — there's no default path to fall back to.
 
 This is deliberate, for two reasons:
