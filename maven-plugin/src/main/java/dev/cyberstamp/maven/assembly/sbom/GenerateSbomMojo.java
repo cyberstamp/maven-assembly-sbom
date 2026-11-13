@@ -22,6 +22,10 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
+import org.apache.maven.settings.Server;
+import org.apache.maven.settings.crypto.DefaultSettingsDecryptionRequest;
+import org.apache.maven.settings.crypto.SettingsDecrypter;
+import org.apache.maven.settings.crypto.SettingsDecryptionResult;
 import org.cyclonedx.model.Bom;
 import org.cyclonedx.model.Hash;
 import org.eclipse.aether.RepositorySystem;
@@ -54,6 +58,9 @@ public class GenerateSbomMojo extends AbstractMojo {
 
     @Component
     private MavenProjectHelper projectHelper;
+
+    @Component
+    private SettingsDecrypter settingsDecrypter;
 
     /**
      * The exploded directory to scan for artifact identification
@@ -157,6 +164,15 @@ public class GenerateSbomMojo extends AbstractMojo {
     @Parameter
     private ProductInfo product;
 
+    /**
+     * Settings for identifying non-Maven-built archive entries (e.g. jars
+     * built with Gradle or Ant) by resolving their Maven coordinates from
+     * Maven Central and/or an internal Nexus or Artifactory instance, keyed
+     * by the entry's SHA-1 content hash. Disabled by default.
+     */
+    @Parameter
+    private RemoteArtifactLookup remoteMavenCoordinatesLookup;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (!inputDirectory.isDirectory()) {
@@ -216,6 +232,7 @@ public class GenerateSbomMojo extends AbstractMojo {
                 librariesOnly, schemaVersion);
         generator.setProduct(product);
         generator.setIdentityEvidence(identityEvidence);
+        generator.setRemoteCoordinatesResolver(buildRemoteCoordinatesResolver());
         Bom bom = generator.generate(entries, null, externalBomList,
                 null, null, project.getPackaging());
 
@@ -238,6 +255,53 @@ public class GenerateSbomMojo extends AbstractMojo {
             projectHelper.attachArtifact(project, type, "cyclonedx", outputFile);
             getLog().info("Attached SBOM artifact: type=" + type + ", classifier=cyclonedx");
         }
+    }
+
+    /**
+     * Builds the remote checksum lookup resolver from {@link #remoteMavenCoordinatesLookup},
+     * resolving any {@code settings.xml} server credentials it references.
+     *
+     * @return the resolver, or {@code null} if remote lookup is disabled or
+     *         not usable as configured
+     */
+    private RemoteCoordinatesResolver buildRemoteCoordinatesResolver() {
+        if (remoteMavenCoordinatesLookup == null || !remoteMavenCoordinatesLookup.isEnabled()) {
+            return null;
+        }
+        Credentials nexusCredentials = resolveCredentials(remoteMavenCoordinatesLookup.getNexusServerId());
+        Credentials artifactoryCredentials = resolveCredentials(remoteMavenCoordinatesLookup.getArtifactoryServerId());
+        return RemoteCoordinatesResolver.create(remoteMavenCoordinatesLookup,
+                nexusCredentials.username(), nexusCredentials.password(),
+                artifactoryCredentials.username(), artifactoryCredentials.password())
+                .orElse(null);
+    }
+
+    private record Credentials(String username, String password) {
+        private static final Credentials NONE = new Credentials(null, null);
+    }
+
+    /**
+     * Resolves and decrypts the username/password of a {@code settings.xml}
+     * {@code <server>} entry.
+     *
+     * @param serverId the server id, or {@code null}/blank for anonymous access
+     * @return the decrypted credentials, or {@link Credentials#NONE} if no
+     *         server id is configured or no matching server is found
+     */
+    private Credentials resolveCredentials(String serverId) {
+        if (serverId == null || serverId.isBlank()) {
+            return Credentials.NONE;
+        }
+        Server server = session.getSettings().getServer(serverId);
+        if (server == null) {
+            getLog().warn("No <server> with id '" + serverId
+                    + "' found in settings.xml; using anonymous access");
+            return Credentials.NONE;
+        }
+        SettingsDecryptionResult result = settingsDecrypter.decrypt(
+                new DefaultSettingsDecryptionRequest(server));
+        Server decrypted = result.getServer() != null ? result.getServer() : server;
+        return new Credentials(decrypted.getUsername(), decrypted.getPassword());
     }
 
     private List<FileEntry> collectDirectoryEntries(Path dir, MessageDigest digest) throws IOException {

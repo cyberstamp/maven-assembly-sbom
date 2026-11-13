@@ -66,4 +66,15 @@ public record Identification(Technique technique, double confidence) {
     public static Identification pomPropertiesFilenameOwner() {
         return new Identification(Technique.MANIFEST_ANALYSIS, 0.5);
     }
+
+    /**
+     * The component's content hash was correlated against a remote package
+     * repository (e.g. Maven Central, Nexus, Artifactory) rather than an
+     * artifact resolved as part of this build.
+     *
+     * @return {@code hash-comparison} at reduced confidence
+     */
+    public static Identification remoteCoordinatesLookup() {
+        return new Identification(Technique.HASH_COMPARISON, 0.9);
+    }
 }

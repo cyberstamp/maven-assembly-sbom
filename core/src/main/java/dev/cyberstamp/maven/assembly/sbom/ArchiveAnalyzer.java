@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
@@ -69,6 +70,7 @@ class ArchiveAnalyzer {
     private final Map<ArtifactCoords, MavenProject> reactorModuleIndex;
     private final List<Bom> externalBoms;
     private final boolean detectEmbeddedSboms;
+    private final RemoteCoordinatesResolver remoteCoordinatesResolver;
     private boolean identityEvidence = true;
     private List<Artifact> allArtifacts;
     private ArtifactHashIndex hashIndex;
@@ -129,7 +131,7 @@ class ArchiveAnalyzer {
             MessageDigest messageDigest,
             boolean failOnDuplicateHash) {
         this(effectiveModelResolver, repoSystem, project, session,
-                messageDigest, failOnDuplicateHash, List.of(), true);
+                messageDigest, failOnDuplicateHash, List.of(), true, null);
     }
 
     ArchiveAnalyzer(EffectiveModelResolver effectiveModelResolver,
@@ -140,6 +142,19 @@ class ArchiveAnalyzer {
             boolean failOnDuplicateHash,
             List<Bom> externalBoms,
             boolean detectEmbeddedSboms) {
+        this(effectiveModelResolver, repoSystem, project, session,
+                messageDigest, failOnDuplicateHash, externalBoms, detectEmbeddedSboms, null);
+    }
+
+    ArchiveAnalyzer(EffectiveModelResolver effectiveModelResolver,
+            RepositorySystem repoSystem,
+            MavenProject project,
+            MavenSession session,
+            MessageDigest messageDigest,
+            boolean failOnDuplicateHash,
+            List<Bom> externalBoms,
+            boolean detectEmbeddedSboms,
+            RemoteCoordinatesResolver remoteCoordinatesResolver) {
         this.effectiveModelResolver = effectiveModelResolver;
         this.repoSystem = repoSystem;
         this.project = project;
@@ -149,6 +164,7 @@ class ArchiveAnalyzer {
         this.reactorModuleIndex = indexReactorModules(session.getProjects());
         this.externalBoms = externalBoms;
         this.detectEmbeddedSboms = detectEmbeddedSboms;
+        this.remoteCoordinatesResolver = remoteCoordinatesResolver;
     }
 
     /**
@@ -230,6 +246,9 @@ class ArchiveAnalyzer {
         }
         if (!unmatchedByPath.isEmpty()) {
             matchAgainstExternalSboms(unmatchedByPath, content);
+        }
+        if (!unmatchedByPath.isEmpty() && remoteCoordinatesResolver != null) {
+            resolveUnmatchedViaRemoteLookup(unmatchedByPath, content);
         }
         if (detectEmbeddedSboms) {
             Set<String> detectedSbomPaths = new HashSet<>();
@@ -435,6 +454,35 @@ class ArchiveAnalyzer {
             } catch (IOException e) {
                 log.debug("Could not read {} for Maven metadata", fileEntry.sourceFile(), e);
             }
+        }
+    }
+
+    /**
+     * Looks up still-unmatched entries (files that no local/offline
+     * technique could identify) by SHA-1 checksum against the configured
+     * remote repositories. Identified entries are removed from
+     * {@code unmatchedByPath}, exactly as {@link #detectMavenMetadataInUnmatchedJars}
+     * does for local {@code pom.properties} hits — this is the last resort,
+     * run only once every free, local technique has had its chance.
+     */
+    private void resolveUnmatchedViaRemoteLookup(
+            Map<String, FileEntry> unmatchedByPath,
+            AssemblyComponentsBuilder content) {
+        var it = unmatchedByPath.entrySet().iterator();
+        while (it.hasNext()) {
+            var mapEntry = it.next();
+            FileEntry fileEntry = mapEntry.getValue();
+            if (!remoteCoordinatesResolver.isCandidate(fileEntry.archivePath())) {
+                continue;
+            }
+            Optional<ArtifactCoords> coords = remoteCoordinatesResolver.resolve(fileEntry);
+            if (coords.isEmpty()) {
+                continue;
+            }
+            content.addMavenEntry(new AssemblyComponentsBuilder.MavenEntry(
+                    coords.get(), fileEntry.archivePath(), fileEntry.hash(),
+                    Identification.remoteCoordinatesLookup()));
+            it.remove();
         }
     }
 
