@@ -393,7 +393,7 @@ class SbomPipelineTest {
         sharedDep.addDependency(new Dependency("pkg:maven/g/transitive@1.0"));
         bom.addDependency(sharedDep);
 
-        SbomGenerator.deduplicateBomRefs(bom);
+        BomFinalizer.deduplicateBomRefs(bom, Set.of());
 
         // Top-level keeps the clean ref
         assertEquals("pkg:maven/g/shared-lib@1.0", topLib.getBomRef());
@@ -592,7 +592,7 @@ class SbomPipelineTest {
         quarkusBom.addDependency(new Dependency("pkg:maven/org.yaml/snakeyaml@2.0?type=jar"));
 
         BomMerger.mergeFlat(distBom, quarkusBom);
-        SbomGenerator.deduplicateBomRefs(distBom);
+        BomFinalizer.deduplicateBomRefs(distBom, Set.of());
 
         // No dependency ref with a #N suffix should exist without a matching component
         Set<String> allBomRefs = collectAllBomRefs(distBom);
@@ -662,7 +662,7 @@ class SbomPipelineTest {
         Bom filtered = SbomGenerator.filterSbomByArchive(
                 quarkusBom, archiveIndex, null);
         BomMerger.mergeFlat(distBom, filtered);
-        SbomGenerator.deduplicateBomRefs(distBom);
+        BomFinalizer.deduplicateBomRefs(distBom, Set.of());
 
         // Transitive deps not in archive should not appear in dependency graph
         Set<String> allBomRefs = collectAllBomRefs(distBom);

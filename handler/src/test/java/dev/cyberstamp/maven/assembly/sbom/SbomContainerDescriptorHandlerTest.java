@@ -1113,45 +1113,22 @@ class SbomContainerDescriptorHandlerTest {
                                 .filter(r -> Collections.frequency(allRefs, r) > 1)
                                 .distinct().toList());
 
-        // Every component bom-ref must have a matching dependency entry
+        // The nimbus jars are not project dependencies and the jcip copies are
+        // bundled in them: all are known only from their pom.properties, so
+        // their dependencies are unknown and none has an entry, which would
+        // declare them as none
         Set<String> depRefs = new HashSet<>();
         if (bom.getDependencies() != null) {
             for (org.cyclonedx.model.Dependency dep : bom.getDependencies()) {
                 depRefs.add(dep.getRef());
             }
         }
+        assertEquals(4, allRefs.size(), "two nimbus jars and their bundled jcip copies: " + allRefs);
         for (String ref : allRefs) {
-            assertTrue(depRefs.contains(ref),
-                    "component bom-ref '" + ref
-                            + "' must have a matching dependency entry");
+            assertFalse(depRefs.contains(ref), "'" + ref + "' must have no dependency entry");
         }
-
-        // Renamed (#2) dependency entries must carry the same dependsOn
-        // children as the original
-        if (bom.getDependencies() != null) {
-            for (org.cyclonedx.model.Dependency dep : bom.getDependencies()) {
-                String ref = dep.getRef();
-                int hashIdx = ref.indexOf('#');
-                if (hashIdx > 0) {
-                    String originalRef = ref.substring(0, hashIdx);
-                    org.cyclonedx.model.Dependency originalDep = bom.getDependencies().stream()
-                            .filter(d -> originalRef.equals(d.getRef()))
-                            .findFirst().orElse(null);
-                    assertNotNull(originalDep,
-                            "original dep for " + ref + " must exist");
-                    int cloneSize = dep.getDependencies() == null
-                            ? 0
-                            : dep.getDependencies().size();
-                    int origSize = originalDep.getDependencies() == null
-                            ? 0
-                            : originalDep.getDependencies().size();
-                    assertEquals(origSize, cloneSize,
-                            "cloned dep " + ref
-                                    + " must have same dependsOn count as "
-                                    + originalRef);
-                }
-            }
-        }
+        assertEquals(2, allRefs.stream().filter(r -> r.startsWith("pkg:maven/org.x/jcip@1.0")).count(),
+                "both bundled copies are listed");
     }
 
     @Test

@@ -60,6 +60,22 @@ public class BomRenderer {
      * @return the assembled BOM, ready for serialization
      */
     public Bom render(AssemblyComponents model) {
+        return render(model, Collections.newSetFromMap(new IdentityHashMap<>()));
+    }
+
+    /**
+     * Renders the model and reports the emitted components whose dependencies
+     * are unknown, and which are therefore not given a leaf dependency entry.
+     * Compared by identity: a copy of an artifact bundled in another jar may
+     * share its bom-ref with an instance whose dependencies are known, until
+     * the bom-refs are made unique.
+     *
+     * @param model the assembly components to render; never {@code null}
+     * @param dependenciesUnknown receives the components with unknown
+     *        dependencies; must compare by identity
+     * @return the assembled BOM
+     */
+    Bom render(AssemblyComponents model, Set<Component> dependenciesUnknown) {
         AssemblyMetadata metadata = model.metadata();
         Hash.Algorithm hashAlgorithm = parseHashAlgorithm(metadata.getHashAlgorithmSpec());
         String normalizedAlg = SbomUtils.normalizeAlgorithm(hashAlgorithm.getSpec());
@@ -74,6 +90,7 @@ public class BomRenderer {
         bom.setMetadata(createMetadata(mainComponent, metadata, ctx));
         bom.setComponents(buildSortedComponentList(ctx));
         buildDependencyTree(bom, mainComponent.getBomRef(), model, ctx);
+        dependenciesUnknown.addAll(ctx.dependenciesUnknown);
 
         return bom;
     }
@@ -194,6 +211,8 @@ public class BomRenderer {
         // leaf entries in the dependency graph (unknown != no dependencies).
         if (!pkg.dependenciesKnown()) {
             ctx.dependenciesUnknown.add(comp);
+        } else {
+            ctx.refsWithKnownDependencies.add(comp.getBomRef());
         }
 
         return comp;
@@ -785,8 +804,12 @@ public class BomRenderer {
         }
         for (Component comp : ctx.componentsById.values()) {
             // Skip components whose dependencies are unknown: declaring an empty
-            // leaf entry would misreport "unknown" as "no dependencies".
-            if (ctx.dependenciesUnknown.contains(comp)) {
+            // leaf entry would misreport "unknown" as "no dependencies". Another
+            // instance sharing the bom-ref may know them (e.g. a jar shipped in a
+            // war while a copy is bundled in a shaded jar); making bom-refs
+            // unique leaves the bom-ref, and so this entry, with that instance.
+            if (ctx.dependenciesUnknown.contains(comp)
+                    && !ctx.refsWithKnownDependencies.contains(comp.getBomRef())) {
                 continue;
             }
             if (existingRefs.add(comp.getBomRef())) {
@@ -813,6 +836,8 @@ public class BomRenderer {
          * leaf dependency entries.
          */
         final Set<Component> dependenciesUnknown = Collections.newSetFromMap(new IdentityHashMap<>());
+        /** Bom-refs of package components rendered with known dependencies. */
+        final Set<String> refsWithKnownDependencies = new HashSet<>();
         final Map<Component, List<Component>> nestedComponentsByParent = new HashMap<>();
         final Set<String> directChildren = new HashSet<>();
 

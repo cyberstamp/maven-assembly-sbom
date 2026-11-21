@@ -5,8 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import org.cyclonedx.model.Bom;
 import org.cyclonedx.model.Component;
@@ -17,6 +23,8 @@ import org.cyclonedx.model.License;
 import org.cyclonedx.model.component.evidence.Identity;
 import org.cyclonedx.model.component.evidence.Method;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Tests for {@link BomRenderer}: rendering {@link AssemblyComponents} to
@@ -648,7 +656,10 @@ class BomRendererTest {
     }
 
     @Test
-    void topLevelComponentGetsLeafEntryEvenIfBundledCopyHasUnknownDependencies() {
+    void topLevelGetsLeafEntryAndBundledCopyNoneOnceBomRefsAreUnique() {
+        // x ships top-level (dependencies known: none) and bundled in a shaded
+        // jar (dependencies unknown). Both render with x's purl as bom-ref
+        // until the generator makes bom-refs unique; checked on that final state.
         AssemblyComponents model = new AssemblyComponents();
         AssemblyMetadata metadata = new AssemblyMetadata();
         metadata.setProjectGroupId("org.example");
@@ -663,13 +674,102 @@ class BomRendererTest {
                 "lib/shaded-1.0.jar", "aaa", List.of(), List.of(bundled)));
         model.addComponent(new PackageComponent(x, "lib/x-1.0.jar", "bbb", List.of(), List.of()));
 
-        Bom bom = new BomRenderer().render(model);
+        Set<Component> unknown = Collections.newSetFromMap(new IdentityHashMap<>());
+        Bom bom = new BomRenderer().render(model, unknown);
+        BomFinalizer.deduplicateBomRefs(bom, unknown);
 
+        Component shaded = bom.getComponents().stream()
+                .filter(c -> "shaded".equals(c.getName())).findFirst().orElseThrow();
+        assertEquals("pkg:maven/com.example/x@1.0#2", shaded.getComponents().get(0).getBomRef());
         List<Dependency> xEntries = bom.getDependencies().stream()
-                .filter(d -> "pkg:maven/com.example/x@1.0".equals(d.getRef()))
+                .filter(d -> d.getRef().startsWith("pkg:maven/com.example/x@1.0"))
                 .toList();
-        assertEquals(1, xEntries.size(), "the top-level x knows its dependencies, so it gets an entry");
+        assertEquals(List.of("pkg:maven/com.example/x@1.0"), xEntries.stream().map(Dependency::getRef).toList(),
+                "the top-level x gets an entry; the bundled copy, whose dependencies are unknown, none");
         assertTrue(xEntries.get(0).getDependencies() == null || xEntries.get(0).getDependencies().isEmpty(),
                 "x depends on nothing, so the entry is a leaf");
+        assertTrue(bom.getDependencies().stream()
+                .flatMap(d -> d.getDependencies() == null ? Stream.empty() : d.getDependencies().stream())
+                .noneMatch(d -> d.getRef().endsWith("#2")),
+                "nothing depends on the bundled copy");
+    }
+
+    private static AssemblyComponents modelOf(List<AssemblyComponent> components) {
+        AssemblyComponents model = new AssemblyComponents();
+        AssemblyMetadata metadata = new AssemblyMetadata();
+        metadata.setProjectGroupId("org.example");
+        metadata.setProjectArtifactId("my-app");
+        metadata.setProjectVersion("1.0.0");
+        metadata.setHashAlgorithmSpec("SHA-256");
+        model.setMetadata(metadata);
+        components.forEach(model::addComponent);
+        return model;
+    }
+
+    private static Bom renderWithUniqueBomRefs(AssemblyComponents model) {
+        Set<Component> unknown = Collections.newSetFromMap(new IdentityHashMap<>());
+        Bom bom = new BomRenderer().render(model, unknown);
+        BomFinalizer.deduplicateBomRefs(bom, unknown);
+        return bom;
+    }
+
+    private static Component topLevel(Bom bom, String name) {
+        return bom.getComponents().stream().filter(c -> name.equals(c.getName())).findFirst().orElseThrow();
+    }
+
+    private static Map<String, List<String>> dependencyMap(Bom bom) {
+        Map<String, List<String>> map = new HashMap<>();
+        for (Dependency d : bom.getDependencies()) {
+            map.put(d.getRef(), d.getDependencies() == null ? List.of()
+                    : d.getDependencies().stream().map(Dependency::getRef).sorted().toList());
+        }
+        return map;
+    }
+
+    private static final ArtifactCoords X = ArtifactCoords.of("com.example", "x", "1.0");
+    private static final ArtifactCoords SHADED = ArtifactCoords.of("org.a", "shaded", "1.0");
+    private static final ArtifactCoords WAR = ArtifactCoords.of("org.z", "war", "1.0");
+
+    @ParameterizedTest
+    @ValueSource(booleans = { true, false })
+    void knownCopyKeepsTheBomRefOverABundledCopy(boolean shadedFirst) {
+        // x is bundled in a shaded jar (dependencies unknown) and shipped in an
+        // unpacked war (dependencies known: none). "shaded" sorts first, yet
+        // the war's x is the one the graph describes, whatever the model order.
+        PackageComponent shaded = new PackageComponent(SHADED, "lib/shaded-1.0.jar", "aaa", List.of(),
+                List.of(new PackageComponent(X, null, null, List.of(), List.of(), false)));
+        PackageComponent war = new PackageComponent(WAR, "web/war/", null, List.of(),
+                List.of(new PackageComponent(X, "web/war/WEB-INF/lib/x-1.0.jar", "bbb", List.of(), List.of())));
+        AssemblyComponents model = modelOf(shadedFirst ? List.of(shaded, war) : List.of(war, shaded));
+        model.addDependencyEdge(new DependencyEdge(WAR, X, true));
+
+        Bom bom = renderWithUniqueBomRefs(model);
+
+        String x = "pkg:maven/com.example/x@1.0";
+        assertEquals(x, topLevel(bom, "war").getComponents().get(0).getBomRef());
+        assertEquals(x + "#2", topLevel(bom, "shaded").getComponents().get(0).getBomRef());
+        Map<String, List<String>> deps = dependencyMap(bom);
+        assertEquals(List.of(), deps.get(x), "the war's x is a leaf");
+        assertNull(deps.get(x + "#2"), "the bundled copy's dependencies are unknown");
+        assertEquals(List.of(x), deps.get(WAR.toPurl().toString()));
+    }
+
+    @Test
+    void dependentAlsoDependsOnTheCopyNestedInIt() {
+        // x ships top-level and inside an unpacked war that depends on it:
+        // the war's dependency covers its own copy too
+        PackageComponent war = new PackageComponent(WAR, "web/war/", null, List.of(),
+                List.of(new PackageComponent(X, "web/war/WEB-INF/lib/x-1.0.jar", "bbb", List.of(), List.of())));
+        AssemblyComponents model = modelOf(List.of(
+                new PackageComponent(X, "lib/x-1.0.jar", "bbb", List.of(), List.of()), war));
+        model.addDependencyEdge(new DependencyEdge(WAR, X, true));
+
+        Bom bom = renderWithUniqueBomRefs(model);
+
+        String x = "pkg:maven/com.example/x@1.0";
+        assertEquals(x + "#2", topLevel(bom, "war").getComponents().get(0).getBomRef());
+        Map<String, List<String>> deps = dependencyMap(bom);
+        assertEquals(List.of(x, x + "#2"), deps.get(WAR.toPurl().toString()));
+        assertEquals(List.of(), deps.get(x + "#2"), "the war's copy has the artifact's entry");
     }
 }

@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -13,7 +15,6 @@ import org.cyclonedx.model.Component;
 import org.cyclonedx.model.Dependency;
 import org.cyclonedx.model.Evidence;
 import org.cyclonedx.model.Hash;
-import org.cyclonedx.model.Metadata;
 import org.cyclonedx.model.component.evidence.Occurrence;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -432,133 +433,6 @@ class SbomGeneratorTest {
                 "FILE component whose occurrence matches the scope but"
                         + " whose hash only exists outside the scope"
                         + " should be filtered out");
-    }
-
-    @Test
-    void deduplicateNoDuplicatesUnchanged() {
-        Bom bom = new Bom();
-        bom.setComponents(new ArrayList<>(List.of(
-                createLibrary("a", "ref-a"),
-                createLibrary("b", "ref-b"))));
-
-        SbomGenerator.deduplicateBomRefs(bom);
-
-        assertEquals("ref-a", bom.getComponents().get(0).getBomRef());
-        assertEquals("ref-b", bom.getComponents().get(1).getBomRef());
-    }
-
-    @Test
-    void deduplicateRenamesDuplicateBomRef() {
-        Bom bom = new Bom();
-        Component first = createLibrary("a-v1", "ref-a");
-        Component second = createLibrary("a-v2", "ref-a");
-        bom.setComponents(new ArrayList<>(List.of(first, second)));
-
-        SbomGenerator.deduplicateBomRefs(bom);
-
-        assertEquals("ref-a", first.getBomRef());
-        assertEquals("ref-a#2", second.getBomRef());
-    }
-
-    @Test
-    void deduplicateHandlesTripleDuplicate() {
-        Bom bom = new Bom();
-        Component first = createLibrary("a1", "ref-a");
-        Component second = createLibrary("a2", "ref-a");
-        Component third = createLibrary("a3", "ref-a");
-        bom.setComponents(new ArrayList<>(List.of(first, second, third)));
-
-        SbomGenerator.deduplicateBomRefs(bom);
-
-        assertEquals("ref-a", first.getBomRef());
-        assertEquals("ref-a#2", second.getBomRef());
-        assertEquals("ref-a#3", third.getBomRef());
-    }
-
-    @Test
-    void deduplicateClonesDependencyEntriesForRenamedRefs() {
-        Bom bom = new Bom();
-        Component first = createLibrary("a1", "ref-a");
-        Component second = createLibrary("a2", "ref-a");
-        bom.setComponents(new ArrayList<>(List.of(first, second)));
-
-        Dependency dep = new Dependency("ref-a");
-        dep.addDependency(new Dependency("ref-child"));
-        bom.addDependency(dep);
-
-        SbomGenerator.deduplicateBomRefs(bom);
-
-        assertEquals(2, bom.getDependencies().size());
-        Dependency cloned = bom.getDependencies().stream()
-                .filter(d -> "ref-a#2".equals(d.getRef()))
-                .findFirst().orElse(null);
-        assertNotNull(cloned, "dependency entry should be cloned for renamed ref");
-        assertTrue(cloned.getDependencies().stream()
-                .anyMatch(d -> "ref-child".equals(d.getRef())),
-                "cloned dependency should copy children");
-    }
-
-    @Test
-    void deduplicateHandlesNestedComponentDuplicates() {
-        Bom bom = new Bom();
-        Component parent = createLibrary("parent", "ref-parent");
-        Component nested1 = createLibrary("child1", "ref-dup");
-        Component nested2 = createLibrary("child2", "ref-dup");
-        parent.setComponents(new ArrayList<>(List.of(nested1, nested2)));
-        bom.setComponents(new ArrayList<>(List.of(parent)));
-
-        SbomGenerator.deduplicateBomRefs(bom);
-
-        assertEquals("ref-dup", nested1.getBomRef());
-        assertEquals("ref-dup#2", nested2.getBomRef());
-    }
-
-    @Test
-    void deduplicateHandlesMetadataComponentChildren() {
-        Bom bom = new Bom();
-        Component top = createLibrary("top", "ref-dup");
-        bom.setComponents(new ArrayList<>(List.of(top)));
-
-        Metadata meta = new Metadata();
-        Component main = createLibrary("app", "ref-app");
-        Component metaNested = createLibrary("meta-child", "ref-dup");
-        main.setComponents(new ArrayList<>(List.of(metaNested)));
-        meta.setComponent(main);
-        bom.setMetadata(meta);
-
-        SbomGenerator.deduplicateBomRefs(bom);
-
-        assertEquals("ref-dup", top.getBomRef());
-        assertEquals("ref-dup#2", metaNested.getBomRef());
-    }
-
-    @Test
-    void deduplicateTopLevelKeepsCleanRefOverNested() {
-        Bom bom = new Bom();
-        Component parentA = createLibrary("a-parent", "ref-parent-a");
-        Component nestedDup = createLibrary("dup-nested", "ref-dup");
-        parentA.setComponents(new ArrayList<>(List.of(nestedDup)));
-
-        Component topDup = createLibrary("dup-top", "ref-dup");
-        // parentA sorts before topDup alphabetically
-        bom.setComponents(new ArrayList<>(List.of(parentA, topDup)));
-
-        Dependency dep = new Dependency("ref-dup");
-        bom.addDependency(dep);
-
-        SbomGenerator.deduplicateBomRefs(bom);
-
-        assertEquals("ref-dup", topDup.getBomRef(),
-                "top-level component should keep the clean bom-ref");
-        assertEquals("ref-dup#2", nestedDup.getBomRef(),
-                "nested component should get the #2 suffix");
-    }
-
-    @Test
-    void deduplicateNoComponentsIsNoop() {
-        Bom bom = new Bom();
-        SbomGenerator.deduplicateBomRefs(bom);
-        assertNull(bom.getComponents());
     }
 
     // ── removeFileComponents ─────────────────────────────────────────────
@@ -1403,7 +1277,7 @@ class SbomGeneratorTest {
         external.addDependency(new Dependency("pkg:maven/com.h2database/h2@2.3"));
         external.addDependency(new Dependency("pkg:npm/react@18.0.0"));
 
-        Set<Component> rejectedSet = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Set<Component> rejectedSet = Collections.newSetFromMap(new IdentityHashMap<>());
         rejectedSet.add(rejected);
 
         Bom result = SbomGenerator.filterExternalSbom(external,
@@ -1470,7 +1344,7 @@ class SbomGeneratorTest {
     }
 
     private static Set<Component> identitySet(Component... components) {
-        Set<Component> set = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Set<Component> set = Collections.newSetFromMap(new IdentityHashMap<>());
         set.addAll(List.of(components));
         return set;
     }

@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 
 import org.cyclonedx.model.Bom;
+import org.cyclonedx.model.Component;
+import org.cyclonedx.model.Dependency;
 import org.cyclonedx.model.component.evidence.Method;
 import org.junit.jupiter.api.Test;
 
@@ -72,5 +74,26 @@ class SbomPipelineOrchestratorTest {
         var component = bom.getComponents().get(0);
         assertNotNull(component.getLicenses(), "license enrichment ran");
         assertEquals(1.0, component.getEvidence().getIdentities().get(0).getConfidence());
+    }
+
+    @Test
+    void renderMakesBomRefsUniqueAndKeepsUnknownDependenciesUndeclared() {
+        // x ships top-level and bundled in a shaded jar (dependencies unknown)
+        ArtifactCoords x = ArtifactCoords.of("g", "x", "1");
+        PackageComponent bundled = new PackageComponent(x, null, null, List.of(), List.of(), false);
+        AssemblyComponents m = model(
+                new PackageComponent(ArtifactCoords.of("g", "shaded", "1"), "lib/shaded.jar", "aaa", List.of(),
+                        List.of(bundled)),
+                new PackageComponent(x, "lib/x.jar", "bbb", List.of(), List.of()));
+
+        Bom bom = SbomPipeline.forModel(m).render();
+
+        Component shaded = bom.getComponents().stream()
+                .filter(c -> "shaded".equals(c.getName())).findFirst().orElseThrow();
+        assertEquals("pkg:maven/g/x@1#2", shaded.getComponents().get(0).getBomRef());
+        List<String> refs = bom.getDependencies().stream().map(Dependency::getRef).toList();
+        assertTrue(refs.contains("pkg:maven/g/x@1"), "the top-level x is a leaf");
+        assertFalse(refs.contains("pkg:maven/g/x@1#2"), "the bundled copy's dependencies are unknown");
+        assertEquals(refs.stream().sorted().toList(), refs, "entries are sorted");
     }
 }

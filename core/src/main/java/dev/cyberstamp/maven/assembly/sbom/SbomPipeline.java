@@ -1,6 +1,11 @@
 package dev.cyberstamp.maven.assembly.sbom;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
+
 import org.cyclonedx.model.Bom;
+import org.cyclonedx.model.Component;
 
 /**
  * Runs the standard SBOM enrichment transforms over an {@link AssemblyComponents}
@@ -108,12 +113,20 @@ public final class SbomPipeline {
     }
 
     /**
-     * {@link #enrich() Enriches} the model, then renders it to a CycloneDX BOM.
+     * {@link #enrich() Enriches} the model, then renders it to a CycloneDX BOM
+     * with unique component bom-refs and sorted dependency entries. Several
+     * copies of an artifact (e.g. shipped at the top level and bundled in a
+     * shaded jar) are separate components: one keeps the artifact's bom-ref,
+     * the others get {@code #2}, {@code #3}, ... appended.
      *
      * @return the rendered BOM
      */
     public Bom render() {
         enrich();
-        return new BomRenderer().render(model);
+        Set<Component> dependenciesUnknown = Collections.newSetFromMap(new IdentityHashMap<>());
+        Bom bom = new BomRenderer().render(model, dependenciesUnknown);
+        BomFinalizer.deduplicateBomRefs(bom, dependenciesUnknown);
+        BomFinalizer.sortDependencies(bom);
+        return bom;
     }
 }

@@ -5,8 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -161,11 +163,13 @@ public class SbomGenerator {
         // pipeline. No jar locator is supplied: the analyzer already performed
         // shaded detection, so only license enrichment runs here.
         buildDependencyGraph(model);
-        Bom bom = SbomPipeline.forModel(model)
+        SbomPipeline.forModel(model)
                 .licenseSource(new EffectiveModelLicenseSource(effectiveModelResolver))
                 .failOnMissingLicense(failOnMissingLicense)
                 .identityEvidence(identityEvidence)
-                .render();
+                .enrich();
+        Set<Component> dependenciesUnknown = Collections.newSetFromMap(new IdentityHashMap<>());
+        Bom bom = new BomRenderer().render(model, dependenciesUnknown);
 
         // Post-processing (detected/external SBOMs, filtering, dedup)
         ArchiveIndex archiveIndex = ArchiveIndex.of(entries, baseDirPrefix, bomHashAlgorithm.getSpec());
@@ -178,7 +182,8 @@ public class SbomGenerator {
         if (librariesOnly) {
             removeFileComponents(bom);
         }
-        deduplicateBomRefs(bom);
+        BomFinalizer.deduplicateBomRefs(bom, dependenciesUnknown);
+        BomFinalizer.sortDependencies(bom);
         return bom;
     }
 
@@ -684,88 +689,6 @@ public class SbomGenerator {
         children.removeByRefs(removedRefs);
         for (Dependency child : children) {
             removeFileRefs(child, removedRefs);
-        }
-    }
-
-    static void deduplicateBomRefs(Bom bom) {
-        Map<String, Component> seen = new HashMap<>();
-        Map<String, String> renames = new HashMap<>();
-        if (bom.getComponents() != null) {
-            deduplicateBomRefs(bom.getComponents(), seen, renames);
-        }
-        if (bom.getMetadata() != null && bom.getMetadata().getComponent() != null
-                && bom.getMetadata().getComponent().getComponents() != null) {
-            deduplicateBomRefs(
-                    bom.getMetadata().getComponent().getComponents(), seen, renames);
-        }
-        if (!renames.isEmpty() && bom.getDependencies() != null) {
-            Map<String, List<String>> originalToNew = new HashMap<>();
-            for (Map.Entry<String, String> e : renames.entrySet()) {
-                originalToNew.computeIfAbsent(e.getValue(),
-                        k -> new ArrayList<>()).add(e.getKey());
-            }
-            List<Dependency> toAdd = new ArrayList<>();
-            for (Dependency dep : bom.getDependencies()) {
-                List<String> newRefs = originalToNew.get(dep.getRef());
-                if (newRefs != null) {
-                    for (String newRef : newRefs) {
-                        Dependency clone = new Dependency(newRef);
-                        if (dep.getDependencies() != null) {
-                            for (Dependency child : dep.getDependencies()) {
-                                clone.addDependency(
-                                        new Dependency(
-                                                child.getRef()));
-                            }
-                        }
-                        toAdd.add(clone);
-                    }
-                }
-                addRenamedDependsOnRefs(dep, originalToNew);
-            }
-            bom.getDependencies().addAll(toAdd);
-        }
-    }
-
-    private static void deduplicateBomRefs(
-            List<Component> components,
-            Map<String, Component> seen,
-            Map<String, String> renames) {
-        for (Component comp : components) {
-            String ref = comp.getBomRef();
-            if (ref != null && seen.putIfAbsent(ref, comp) != null) {
-                int suffix = 2;
-                String unique = ref + "#" + suffix;
-                while (seen.containsKey(unique)) {
-                    unique = ref + "#" + ++suffix;
-                }
-                renames.put(unique, ref);
-                comp.setBomRef(unique);
-                seen.put(unique, comp);
-            }
-        }
-        for (Component comp : components) {
-            if (comp.getComponents() != null) {
-                deduplicateBomRefs(comp.getComponents(), seen, renames);
-            }
-        }
-    }
-
-    private static void addRenamedDependsOnRefs(
-            Dependency dep, Map<String, List<String>> originalToNew) {
-        if (dep.getDependencies() == null) {
-            return;
-        }
-        List<Dependency> childrenToAdd = new ArrayList<>();
-        for (Dependency child : dep.getDependencies()) {
-            List<String> newRefs = originalToNew.get(child.getRef());
-            if (newRefs != null) {
-                for (String newRef : newRefs) {
-                    childrenToAdd.add(new Dependency(newRef));
-                }
-            }
-        }
-        for (Dependency d : childrenToAdd) {
-            dep.addDependency(d);
         }
     }
 

@@ -449,6 +449,8 @@ The BOM includes a CycloneDX dependency graph reflecting the Maven dependency tr
 
 - **Direct vs. transitive** — the graph preserves the Maven dependency hierarchy. Transitive dependencies are connected through their parent, not listed as direct dependencies of the main component.
 - **Unpacked artifact dependencies** — nested JARs identified within unpacked archives are connected to their parent artifact via dependency edges.
+- **Unknown dependencies** — a component whose dependencies were never resolved has no dependency entry, since an empty entry would declare that it has none. This applies to artifacts bundled in a shaded JAR and to JARs identified from their `pom.properties`, a detected SBOM or a remote lookup rather than as project dependencies.
+- **Several copies of an artifact** — when the same artifact ships more than once (e.g. at the top level and inside a WAR, or bundled in a shaded JAR), each copy is a separate component. One keeps the plain bom-ref (the first met, top-level first, or, when the artifact has a dependency entry, the first whose dependencies are known); the others get `#2`, `#3`, ... appended. A copy whose dependencies are known gets the artifact's dependency entry, and a component depending on the artifact also depends on the copies nested in it. The main component depends on what ships at the top level, so its dependency follows the top-level copy, whichever bom-ref it ends up with.
 
 ### SBOM Merging
 

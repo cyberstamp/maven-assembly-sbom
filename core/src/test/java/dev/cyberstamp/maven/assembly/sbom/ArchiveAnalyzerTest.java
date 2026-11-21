@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -117,6 +118,7 @@ class ArchiveAnalyzerTest {
         List<PackageComponent> topLevel = extractPackageComponents(model);
         assertEquals(1, topLevel.size());
         assertEquals("nimbus-jose-jwt", ((ArtifactCoords) topLevel.get(0).ref()).artifactId());
+        assertTrue(topLevel.get(0).dependenciesKnown(), "a project dependency: resolved by Maven");
 
         // Find the bundled dep in nested components
         var bundledEntry = extractNestedPackages(model).stream()
@@ -129,6 +131,8 @@ class ArchiveAnalyzerTest {
                 .anyMatch(n -> n instanceof PackageComponent pkg
                         && "jcip-annotations".equals(((ArtifactCoords) pkg.ref()).artifactId())),
                 "bundled dep should be nested under the shaded JAR");
+        assertFalse(bundledEntry.dependenciesKnown(),
+                "known only from its pom.properties, the bundled dep's dependencies were never resolved");
     }
 
     @Test
@@ -247,6 +251,47 @@ class ArchiveAnalyzerTest {
         assertEquals(1, extractNestedPackages(model).size(), "nested JAR should be identified");
         assertEquals("nested", ((ArtifactCoords) extractNestedPackages(model).get(0).ref()).artifactId());
         assertEquals("org.nested", ((ArtifactCoords) extractNestedPackages(model).get(0).ref()).groupId());
+        assertTrue(extractNestedPackages(model).get(0).dependenciesKnown(),
+                "a nested jar with a file of its own is resolved as a Maven artifact");
+    }
+
+    @Test
+    void nestedJarWithItsOwnFileIsNotReplacedByBundledCopyUnderAnotherParent() throws Exception {
+        // x is bundled in a top-level shaded jar (pom.properties only) and
+        // shipped as a file in an unpacked war: the war's x keeps its file
+        Path shadedJar = createShadedJarWithMultiplePomProperties("a-shaded-1.0.jar",
+                "org.a", "a-shaded", "1.0",
+                "com.example", "x", "1.0",
+                "shaded-content");
+        Artifact shadedArtifact = createArtifact("org.a", "a-shaded", "1.0", "jar", shadedJar.toFile());
+        Path xJar = createJarWithPomProperties("x-1.0.jar", "com.example", "x", "1.0", "x-content");
+        Path warFile = tempDir.resolve("war-1.0.war");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(warFile))) {
+            jos.putNextEntry(new JarEntry("WEB-INF/lib/x-1.0.jar"));
+            jos.write(Files.readAllBytes(xJar));
+            jos.closeEntry();
+        }
+        Artifact warArtifact = createArtifact("org.z", "war", "1.0", "war", warFile.toFile());
+        when(project.getArtifacts()).thenReturn(new LinkedHashSet<>(List.of(shadedArtifact, warArtifact)));
+
+        String xHash = SbomUtils.computeHash(digest, xJar);
+        List<FileEntry> entries = List.of(
+                new FileEntry("lib/a-shaded-1.0.jar", SbomUtils.computeHash(digest, shadedJar)),
+                new FileEntry("web/war/WEB-INF/lib/x-1.0.jar", xHash));
+
+        AssemblyComponents model = createAnalyzer().analyze(entries, null);
+
+        PackageComponent war = extractPackageComponents(model).stream()
+                .filter(c -> "war".equals(((ArtifactCoords) c.ref()).artifactId())).findFirst().orElseThrow();
+        PackageComponent warX = (PackageComponent) war.nested().get(0);
+        assertEquals("web/war/WEB-INF/lib/x-1.0.jar", warX.archivePath());
+        assertEquals(xHash, warX.hash());
+        assertTrue(warX.dependenciesKnown());
+        PackageComponent shaded = extractPackageComponents(model).stream()
+                .filter(c -> "a-shaded".equals(((ArtifactCoords) c.ref()).artifactId())).findFirst().orElseThrow();
+        PackageComponent bundledX = (PackageComponent) shaded.nested().get(0);
+        assertNull(bundledX.archivePath());
+        assertFalse(bundledX.dependenciesKnown());
     }
 
     @Test
@@ -498,6 +543,8 @@ class ArchiveAnalyzerTest {
         assertTrue(jarFile.nested().stream()
                 .anyMatch(n -> n instanceof PackageComponent pkg
                         && ((ArtifactCoords) pkg.ref()).artifactId().equals("cd")));
+        assertTrue(jarFile.nested().stream().noneMatch(AssemblyComponent::dependenciesKnown),
+                "artifacts known only from their pom.properties have unresolved dependencies");
     }
 
     @Test
@@ -632,6 +679,8 @@ class ArchiveAnalyzerTest {
                 "shaded JAR owner should be detected as Maven entry");
         assertEquals("nimbus-jose-jwt", ((ArtifactCoords) extractPackageComponents(model).get(0).ref()).artifactId());
         assertEquals("com.nimbusds", ((ArtifactCoords) extractPackageComponents(model).get(0).ref()).groupId());
+        assertFalse(extractPackageComponents(model).get(0).dependenciesKnown(),
+                "identified from its pom.properties, not a project dependency: dependencies never resolved");
 
         assertEquals(1, extractNestedPackages(model).size(),
                 "bundled dep should be recorded as nested entry");
@@ -1300,6 +1349,7 @@ class ArchiveAnalyzerTest {
         List<PackageComponent> packages = extractPackageComponents(model);
         assertEquals(1, packages.size());
         assertEquals(ArtifactCoords.of("org.gradle.example", "resolved", "9.0"), packages.get(0).ref());
+        assertFalse(packages.get(0).dependenciesKnown(), "identified remotely: dependencies never resolved");
         assertTrue(isNestedUnder(model, "ab", "resolved"),
                 "bundled deps discovered before the remote match must nest under the now-known owner");
         assertTrue(isNestedUnder(model, "cd", "resolved"));
@@ -1517,6 +1567,7 @@ class ArchiveAnalyzerTest {
 
         PackageComponent libZ = topLevelPackage(model, "lib-z");
         assertEquals(new Identification(Technique.HASH_COMPARISON, 1.0), libZ.identification());
+        assertFalse(libZ.dependenciesKnown(), "identified by a found SBOM: dependencies never resolved");
         assertTrue(containsNestedWithArtifactId(libZ, "shaded-a"));
         assertEquals(Identification.pomProperties(), nestedPackage(model, "shaded-a").identification());
     }
@@ -1627,7 +1678,7 @@ class ArchiveAnalyzerTest {
     void embeddedSbomOfUnshippedArtifactIsNotMerged() throws Exception {
         Artifact shipped = jarWithSbom("shipped-1.0.jar", "org.example", "shipped");
         Artifact unshipped = jarWithSbom("unshipped-1.0.jar", "org.example", "unshipped");
-        when(project.getArtifacts()).thenReturn(new java.util.LinkedHashSet<>(List.of(shipped, unshipped)));
+        when(project.getArtifacts()).thenReturn(new LinkedHashSet<>(List.of(shipped, unshipped)));
 
         AssemblyComponents model = createAnalyzer().analyze(List.of(new FileEntry("lib/shipped-1.0.jar",
                 SbomUtils.computeHash(digest, shipped.getFile().toPath()))), null);
@@ -1640,7 +1691,7 @@ class ArchiveAnalyzerTest {
     void embeddedSbomOfSharedFileOwnedByFirstArtifact() throws Exception {
         Artifact first = jarWithSbom("shared-1.0.jar", "org.example", "first");
         Artifact second = createArtifact("org.example", "second", "1.0", "jar", first.getFile());
-        when(project.getArtifacts()).thenReturn(new java.util.LinkedHashSet<>(List.of(first, second)));
+        when(project.getArtifacts()).thenReturn(new LinkedHashSet<>(List.of(first, second)));
 
         AssemblyComponents model = createAnalyzer().analyze(List.of(new FileEntry("lib/shared-1.0.jar",
                 SbomUtils.computeHash(digest, first.getFile().toPath()))), null);
