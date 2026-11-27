@@ -105,10 +105,10 @@ public class BomRenderer {
         buildTopLevelComponents(model, ctx);
         attachNestedComponents(ctx);
         List<Component> topLevel = buildSortedComponentList(ctx);
-        assignUniqueBomRefs(topLevel);
+        Component mainComponent = createMainComponent(metadata);
+        assignUniqueBomRefs(mainComponent, topLevel);
 
         Bom bom = new Bom();
-        Component mainComponent = createMainComponent(metadata);
         bom.setMetadata(createMetadata(mainComponent, metadata, ctx));
         bom.setComponents(topLevel);
         buildDependencyTree(bom, mainComponent.getBomRef(), model, ctx);
@@ -126,8 +126,11 @@ public class BomRenderer {
      *
      * @param topLevel the sorted top-level components
      */
-    private static void assignUniqueBomRefs(List<Component> topLevel) {
+    private static void assignUniqueBomRefs(Component mainComponent, List<Component> topLevel) {
         Set<String> taken = new HashSet<>();
+        if (mainComponent != null && mainComponent.getBomRef() != null) {
+            taken.add(mainComponent.getBomRef());
+        }
         List<Component> level = topLevel;
         while (!level.isEmpty()) {
             List<Component> next = null;

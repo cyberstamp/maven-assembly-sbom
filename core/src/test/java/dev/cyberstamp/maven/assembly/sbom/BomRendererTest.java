@@ -2,6 +2,7 @@ package dev.cyberstamp.maven.assembly.sbom;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -743,5 +744,26 @@ class BomRendererTest {
         Map<String, List<String>> deps = dependencyMap(new BomRenderer().render(model));
 
         assertEquals(List.of(), deps.get(Y.toPurl().toString()));
+    }
+
+    @Test
+    void mainComponentBomRefNotDuplicatedInComponents() {
+        ArtifactCoords appCoords = ArtifactCoords.of("org.example", "my-app", "1.0.0");
+        PackageComponent appComp = PackageComponent.of(appCoords, "lib/my-app-1.0.0.jar", "hash1");
+        AssemblyComponents model = modelOf(List.of(appComp));
+
+        Bom bom = new BomRenderer().render(model);
+
+        Component main = bom.getMetadata().getComponent();
+        assertNotNull(main);
+        String mainRef = main.getBomRef();
+        assertNotNull(mainRef);
+
+        Component topComp = topLevel(bom, "my-app");
+        assertNotNull(topComp);
+
+        assertNotEquals(mainRef, topComp.getBomRef(),
+                "Component in components[] must have a unique bom-ref distinct from metadata.component");
+        assertEquals(mainRef + "#2", topComp.getBomRef());
     }
 }
